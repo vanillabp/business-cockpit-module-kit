@@ -43,8 +43,8 @@ after(async () => {
   await server?.close();
 });
 
-/** Opens the test page and waits for the host. */
-async function openPage(query = '') {
+/** Opens the test page and waits for the host. By default the host has the areas body and actions. */
+async function openPage(query = '?areas=body,actions') {
   const page = await browser.newPage();
   const consoleErrors = [];
   page.on('pageerror', (error) => consoleErrors.push(error.message));
@@ -84,7 +84,7 @@ describe('the reference host in Chromium', () => {
     assert.equal(answers['react-module'].columns[0].path, 'details.customer');
     assert.deepEqual(answers['vue-module'].form, {
       entry: 'ConfirmRideForm',
-      element: { body: 'vue-module-confirm-ride-body', actions: 'vue-module-confirm-ride-actions' },
+      element: { all: 'vue-module-confirm-ride', body: 'vue-module-confirm-ride-body', actions: 'vue-module-confirm-ride-actions' },
     });
 
     const loaded = await page.evaluate(() => performance.getEntriesByType('resource').map(({ name }) => new URL(name).pathname).filter((path) => path.startsWith('/wm/')));
@@ -159,7 +159,7 @@ describe('the reference host in Chromium', () => {
     });
 
     it(`EXT-018 EXT-039 opens a dialog and resolves with what it closed with, in ${framework}`, async () => {
-      const { page } = await openPage();
+      const { page, consoleErrors } = await openPage();
       await page.evaluate(async ([id, task, container]) => window.bcTest.show(id, task, container), [moduleId, userTask('8'), pageId]);
       await shadowText(page, pageId, 'actions', 'dialog').click();
       const dialog = page.locator(`dialog[data-bc-dialog="${moduleId}-confirm-ride-dialog"]`);
@@ -167,9 +167,62 @@ describe('the reference host in Chromium', () => {
       await dialog.locator('[data-test="close"]').click();
       await page.waitForFunction(() => document.querySelector('dialog') === null);
       await assertText(shadowText(page, pageId, 'actions', 'state'), `dialog: closed by ${framework}`);
+      assert.deepEqual(consoleErrors, []);
       await page.close();
     });
   }
+
+  it('a host without areas shows the web component of all, in React and in Vue', async () => {
+    const { page, consoleErrors } = await openPage('');
+    const areas = await page.evaluate(async ([a, b]) => Promise.all([
+      window.bcTest.show('react-module', a, 'react-all'),
+      window.bcTest.show('vue-module', b, 'vue-all'),
+    ]), [userTask('3'), userTask('4')]);
+    assert.deepEqual(areas, [['all'], ['all']]);
+    const shown = await page.evaluate(() => [...document.querySelectorAll('#react-all > *, #vue-all > *')].map((element) => [element.localName, element.shadowRoot?.mode, element.area]));
+    assert.deepEqual(shown, [['react-module-confirm-ride', 'open', 'all'], ['vue-module-confirm-ride', 'open', 'all']]);
+    for (const [pageId, framework] of [['react-all', 'React'], ['vue-all', 'Vue']]) {
+      const inForm = (testId) => page.locator(`#${pageId} [data-test="${testId}"]`);
+      assert.equal(await inForm('framework').textContent(), framework);
+      assert.equal(await inForm('complete').isDisabled(), true);
+      await inForm('comment').pressSequentially('ok');
+      await page.locator(`#${pageId} [data-test="complete"]:not([disabled])`).waitFor({ timeout: 5000 });
+      await inForm('claim').click();
+      await assertText(inForm('state'), 'claimed');
+    }
+    assert.deepEqual(consoleErrors, []);
+    await page.close();
+  });
+
+  it('a host with the areas body, information and actions shows body and actions, and ignores all', async () => {
+    const { page } = await openPage('?areas=body,information,actions');
+    const areas = await page.evaluate(async (task) => window.bcTest.show('react-module', task, 'react-page'), userTask('5'));
+    assert.deepEqual(areas, ['body', 'actions']);
+    assert.equal(await page.locator('react-module-confirm-ride').count(), 0);
+    await page.close();
+  });
+
+  it('a host which does not know the entry Header ignores it, and a host which knows it shows the buttons', async () => {
+    const without = await openPage('');
+    const before = server.requests.length;
+    const ignored = await without.page.evaluate(async (task) => [
+      await window.bcTest.showHeader('react-module', 'header'),
+      await window.bcTest.show('react-module', task, 'react-all'),
+    ], userTask('6'));
+    assert.deepEqual(ignored, [undefined, ['all']]);
+    assert.deepEqual(server.requests.slice(before).filter((path) => /Header/.test(path)), []);
+    assert.deepEqual(without.consoleErrors, []);
+    await without.page.close();
+
+    const withHeader = await openPage('?header');
+    const shown = await withHeader.page.evaluate(async () => Promise.all([
+      window.bcTest.showHeader('react-module', 'header'),
+      window.bcTest.showHeader('vue-module', 'header'),
+    ]));
+    assert.deepEqual(shown, [['react-module-new-ride'], ['vue-module-new-ride']]);
+    assert.deepEqual(await withHeader.page.locator('#header [data-test="new-ride"]').allTextContents(), ['New ride for anna', 'New ride for anna']);
+    await withHeader.page.close();
+  });
 
   it('EXT-007 EXT-008 EXT-009 answers every request once, with UNKNOWN_ACTION, REFUSED or NO_TARGET where they apply', async () => {
     const { page } = await openPage();

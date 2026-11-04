@@ -13,7 +13,7 @@ contains framework code.
 
 Options:
   --limit <size>        the limit of a data entry, like 32kb (default ${DEFAULT_LIMIT_BYTES / 1024}kb)
-  --data-entry <name>   one more data entry of this cockpit; may be given again
+  --data-entry <name>   one more data entry, for example Header; may be given again
   --metafile <path>     esbuild's metafile, to find framework packages by their inputs
   --help                shows this text
 `;

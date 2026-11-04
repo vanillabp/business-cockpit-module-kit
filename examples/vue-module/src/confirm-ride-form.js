@@ -1,6 +1,7 @@
 // Visual entry ConfirmRideForm, written in Vue with render functions, so it needs no compiler.
-// Evaluating it defines the web components of the areas 'body' and 'actions' and of a dialog.
-// Each one renders into its own shadow root.
+// Evaluating it defines four web components: the whole form for the area 'all', the same form
+// split into the areas 'body' and 'actions', and a dialog. Each one renders into its own shadow
+// root.
 
 import { createApp, h, onMounted, onUnmounted, ref, shallowReactive } from 'vue';
 import { defineBcElement } from '@vanillabp/bc-module-kit';
@@ -25,28 +26,23 @@ function vueElement(name, setup) {
   });
 }
 
-vueElement('vue-module-confirm-ride-body', (state) => {
+/** The fields of the form. `onValid` hears whether the comment is valid. */
+function fields(state, onValid) {
   const comment = ref('');
   const onInput = (event) => {
     comment.value = event.target.value;
-    state.props.userTask.sendTo('actions', { valid: comment.value.length > 0 });
+    onValid(comment.value.length > 0);
   };
   return () => [
-    h('style', STYLE),
     h('p', { 'data-test': 'framework' }, 'Vue'),
     h('p', { 'data-test': 'title' }, state.props.userTask.title),
     h('input', { 'data-test': 'comment', value: comment.value, onInput }),
   ];
-});
+}
 
-vueElement('vue-module-confirm-ride-actions', (state) => {
-  const valid = ref(false);
+/** The buttons of the form. `valid` says whether the comment is valid. */
+function buttons(state, valid) {
   const result = ref('');
-  let subscription;
-  onMounted(() => {
-    subscription = state.props.userTask.receiveMessage((message) => { valid.value = Boolean(message?.valid); });
-  });
-  onUnmounted(() => subscription?.unsubscribe());
   const claim = async () => {
     try {
       await state.props.userTask.claim();
@@ -61,12 +57,37 @@ vueElement('vue-module-confirm-ride-actions', (state) => {
     result.value = `dialog: ${closedWith}`;
   };
   return () => [
-    h('style', STYLE),
     h('button', { 'data-test': 'claim', onClick: claim }, 'Claim'),
     h('button', { 'data-test': 'complete', disabled: !valid.value }, 'Complete'),
     h('button', { 'data-test': 'dialog', onClick: dialog }, 'Dialog'),
     h('p', { 'data-test': 'state' }, result.value),
   ];
+}
+
+// The area 'all': fields and buttons in one web component.
+vueElement('vue-module-confirm-ride', (state) => {
+  const valid = ref(false);
+  const renderFields = fields(state, (value) => { valid.value = value; });
+  const renderButtons = buttons(state, valid);
+  return () => [h('style', STYLE), ...renderFields(), ...renderButtons()];
+});
+
+// The area 'body': the fields. It tells the area 'actions' whether the comment is valid.
+vueElement('vue-module-confirm-ride-body', (state) => {
+  const renderFields = fields(state, (valid) => state.props.userTask.sendTo('actions', { valid }));
+  return () => [h('style', STYLE), ...renderFields()];
+});
+
+// The area 'actions': the buttons.
+vueElement('vue-module-confirm-ride-actions', (state) => {
+  const valid = ref(false);
+  let subscription;
+  onMounted(() => {
+    subscription = state.props.userTask.receiveMessage((message) => { valid.value = Boolean(message?.valid); });
+  });
+  onUnmounted(() => subscription?.unsubscribe());
+  const renderButtons = buttons(state, valid);
+  return () => [h('style', STYLE), ...renderButtons()];
 });
 
 vueElement('vue-module-confirm-ride-dialog', (state) => () => [

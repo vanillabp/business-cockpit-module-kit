@@ -20,9 +20,11 @@ tests against this kit loads in every cockpit generated with that skill.
 **Contents:**
 
 1. [Who needs this kit](#who-needs-this-kit)
+1. [The minimum and what an organisation adds](#the-minimum-and-what-an-organisation-adds)
 1. [The kit](#the-kit)
 1. [Checking a module's build](#checking-a-modules-build)
 1. [The host](#the-host)
+1. [Testing a generated cockpit](#testing-a-generated-cockpit)
 1. [Building and testing this repository](#building-and-testing-this-repository)
 1. [License](#license)
 
@@ -36,6 +38,49 @@ library of its own cockpit, not against this kit.
 
 If you start from a blueprint, replace `@vanillabp/bc-module-kit` by the types library of your
 cockpit once you have one.
+
+## The minimum and what an organisation adds
+
+The kit is the minimum. Every generated cockpit keeps this part of the contract, so a module built
+against the kit loads in every cockpit:
+
+- the four data entries `UserTaskList`, `WorkflowList`, `UserTaskForm` and `WorkflowPage`, and the
+  name of the function each one exports,
+- the area `all`: the one web component which shows the whole page of a user task or a case,
+- `bc-manifest.json`, the event protocol, `defineBcElement` and `bc-check-entries`.
+
+Everything else differs from one organisation to the next. The skill asks about it when it
+generates the cockpit, and the types library of that cockpit names it:
+
+| Extension point                                           | Who has it so far                                                              | What the skill proposes |
+|-----------------------------------------------------------|--------------------------------------------------------------------------------|-------------------------|
+| `Header`: buttons in the header of the cockpit            | every customer so far                                                          | yes |
+| areas of a page, like `body`, `information` and `actions` | missing in the old cockpit, wanted by everybody                                | yes, but you may leave them out |
+| `Pages`: pages of a module with their own menu entries    | nobody yet; an example is a page to maintain master data which a process needs | no |
+
+A cockpit ignores entries and areas it does not know, without an error. A cockpit without areas
+shows the web component of `all`. So a module may offer a `Header` entry and areas on top of the
+minimum. In a cockpit without these extension points it still works, only without that part.
+
+A data entry offers `all` and the areas side by side:
+
+```js
+// UserTaskForm: plain JavaScript
+export const userTaskForm = (userTask) => {
+  if (userTask.taskDefinition !== 'confirmRide') return undefined;
+  return {
+    entry: 'ConfirmRideForm',
+    element: {
+      all: 'taxi-ride-confirm-ride',          // every cockpit can show this one
+      body: 'taxi-ride-confirm-ride-body',    // a cockpit with areas shows these instead
+      actions: 'taxi-ride-confirm-ride-actions',
+    },
+  };
+};
+```
+
+An entry of the module's own, like `Header`, needs `--data-entry Header` in
+[`bc-check-entries`](#checking-a-modules-build).
 
 ## The kit
 
@@ -53,12 +98,12 @@ A data entry names the web components as strings and imports no form:
 // UserTaskForm: plain JavaScript
 export const userTaskForm = (userTask) => {
   if (userTask.taskDefinition !== 'confirmRide') return undefined;
-  return {
-    entry: 'ConfirmRideForm',
-    element: { body: 'taxi-ride-confirm-ride-body', actions: 'taxi-ride-confirm-ride-actions' },
-  };
+  return { entry: 'ConfirmRideForm', element: 'taxi-ride-confirm-ride' };
 };
 ```
+
+One name is the web component for the area `all`. To offer areas as well, return an object, as
+shown in [the section above](#the-minimum-and-what-an-organisation-adds).
 
 A visual entry defines its web components with `defineBcElement`. The kit attaches an open shadow
 root, reads the properties the cockpit sets and turns function calls into DOM events:
@@ -89,21 +134,21 @@ function Actions({ userTask, showNotification }) {
 
 `mount` and `update` get the properties of the cockpit and its functions:
 
-| Property            | What it is |
-|---------------------|------------|
-| `userTask`          | on the page of a user task: the data plus `open`, `navigateToWorkflow`, `claim`, `unclaim`, `assign`, `unassign`, `sendTo` and `receiveMessage` |
-| `workflow`          | on the page of a case: the data plus `navigateToWorkflow`, `getUserTasks`, `sendTo` and `receiveMessage` |
-| `area`              | the area of the page, or `all` for an all-in-one form |
-| `language`          | the language the cockpit shows, for example `en` |
-| `currentUser`       | the user who is logged in |
-| `workflowModule`    | for parts outside the two pages: `id`, `version` and `uri` |
-| `data`              | for a dialog: what `openDialog` handed over |
-| `showNotification`  | shows a toast in the cockpit |
-| `openDialog`        | shows a web component in a modal dialog and resolves with what it closed with |
-| `closeDialog`       | closes the dialog this web component is shown in |
-| `sendTo`            | sends a message to the web component of another area of the page |
-| `receiveMessage`    | receives the messages for this area |
-| `request`           | any other action, for example one of an extension point of your cockpit |
+| Property           | What it is |
+|--------------------|------------|
+| `userTask`         | on the page of a user task: the data plus `open`, `navigateToWorkflow`, `claim`, `unclaim`, `assign`, `unassign`, `sendTo` and `receiveMessage` |
+| `workflow`         | on the page of a case: the data plus `navigateToWorkflow`, `getUserTasks`, `sendTo` and `receiveMessage` |
+| `area`             | the area of the page, or `all` for the web component which shows the whole page |
+| `language`         | the language the cockpit shows, for example `en` |
+| `currentUser`      | the user who is logged in |
+| `workflowModule`   | for parts outside the two pages: `id`, `version` and `uri` |
+| `data`             | for a dialog: what `openDialog` handed over |
+| `showNotification` | shows a toast in the cockpit |
+| `openDialog`       | shows a web component in a modal dialog and resolves with what it closed with |
+| `closeDialog`      | closes the dialog this web component is shown in |
+| `sendTo`           | sends a message to the web component of another area of the page |
+| `receiveMessage`   | receives the messages for this area |
+| `request`          | any other action, for example one of an extension point of your cockpit |
 
 Every function returns a promise. A request without an answer fails after 30 seconds with the code
 `TIMEOUT`. `openDialog` waits for ever, because it waits for the user. When the web component leaves
@@ -111,13 +156,13 @@ the page, its open requests fail with `DISCONNECTED`.
 
 What else the kit exports:
 
-| Export                                                                  | What it is |
-|-------------------------------------------------------------------------|------------|
-| `USER_TASK_LIST`, `WORKFLOW_LIST`, `USER_TASK_FORM`, `WORKFLOW_PAGE`, `HEADER`, `PAGES` | the names of the data entries |
-| `DATA_ENTRIES`, `EXPORT_NAMES`                                          | all data entries, and the name of the function each one exports |
-| `AREA_BODY`, `AREA_INFORMATION`, `AREA_ACTIONS`, `AREA_ALL`             | the areas of a page |
-| `readManifest`, `checkManifest`, `createManifest`, `entryUrl`           | reading, checking and writing `bc-manifest.json` |
-| `REQUEST_EVENT`, `RESPONSE_EVENT`, `MESSAGE_EVENT`, `ACTIONS`, `ERROR_CODES` | the names of the event protocol |
+| Export                                                                                                                            | What it is |
+|-----------------------------------------------------------------------------------------------------------------------------------|------------|
+| `USER_TASK_LIST`, `WORKFLOW_LIST`, `USER_TASK_FORM`, `WORKFLOW_PAGE`                                                              | the names of the four data entries every cockpit knows |
+| `DATA_ENTRIES`, `EXPORT_NAMES`                                                                                                    | these four, and the name of the function each one exports |
+| `AREA_ALL`                                                                                                                        | the area `all`, which every cockpit knows |
+| `readManifest`, `checkManifest`, `createManifest`, `entryUrl`                                                                     | reading, checking and writing `bc-manifest.json` |
+| `REQUEST_EVENT`, `RESPONSE_EVENT`, `MESSAGE_EVENT`, `ACTIONS`, `ERROR_CODES`                                                      | the names of the event protocol |
 | `requestFromCockpit`, `toBcUserTask`, `toBcWorkflow`, `sendTo`, `receiveMessage`, `showNotification`, `openDialog`, `closeDialog` | the event protocol without `defineBcElement` |
 
 The types are in `src/index.d.ts`. The JSON schema of the manifest is
@@ -162,8 +207,8 @@ It fails the build when
 - a data entry contains code of a framework, found by the markers React, Vue, Angular, `zone.js` and
   Lit leave in a bundle, and by the inputs of esbuild's metafile when you pass it.
 
-A cockpit with extension points of its own names their data entries with `--data-entry <name>`, once
-per entry. Visual entries are only checked for their file. They may be as large as their framework
+A module with data entries of its own, for example `Header`, names them with `--data-entry <name>`,
+once per entry. Visual entries are only checked for their file. They may be as large as their framework
 makes them.
 
 ## The host
@@ -182,6 +227,8 @@ import { BcRefusedError, createModuleHost } from '@vanillabp/bc-module-host';
 
 const host = createModuleHost({
   modules: [{ id: 'taxi-ride', uri: '/wm/taxi-ride' }],
+  areas: ['body', 'actions'],      // leave it out for a cockpit with the minimum only
+  entries: { Header: 'header' },   // entry -> exported function, beyond the four of the kit
   properties: { language: 'en', currentUser: { id: 'anna' } },
   actions: {
     'userTask.claim': ({ userTaskId }) => { /* record it */ },
@@ -200,10 +247,52 @@ the dialog (`cockpit.openDialog`, `cockpit.closeDialog`) itself. Every other act
 like `<div data-bc-area="body">` gets each web component in its area; any other container gets them
 one after the other.
 
+By default the host is a cockpit with the minimum only: the four entries of the kit and the area
+`all`. With `areas` it draws the areas it knows and ignores the others. When a module offers none
+of its areas, or the host has none, it draws the web component of `all`. With `entries` it asks
+more data entries, for example `Header`. It does not load an entry it does not know, and
+`host.ask` answers `undefined` for it. So one module can be tested against a cockpit with areas
+and a header and against one with the minimum only.
+
 The steps are also there on their own: `host.ask(moduleId, entry, args)`,
 `host.load(moduleId, entry, elementNames)` and `host.draw({ moduleId, entry, element, container })`.
 A failed step throws a `BcHostError` which names the step, the module, the entry and, where it
 applies, the web component.
+
+## Testing a generated cockpit
+
+The skill checks a generated cockpit with the two example modules of this repository: a module
+built against the kit loads in your cockpit. `npm run build:examples` and then
+`npm run build:conformance` write a folder `dist/conformance`, which works on its own:
+
+| File                                 | What it is |
+|--------------------------------------|------------|
+| `wm/react-module/`, `wm/vue-module/` | the built example modules, each with its `bc-manifest.json` |
+| `serve.mjs`                          | a small web server for `wm/`; it prints the address of each module |
+| `cockpit.test.js`                    | the browser test, with Playwright and the test runner of Node.js |
+| `package.json`                       | its one dependency, `playwright` |
+
+To run it against your cockpit:
+
+1. `npm install` and `npx playwright install chromium` in the folder, then `node serve.mjs`.
+1. Register `react-module` and `vue-module` in your cockpit with the addresses `serve.mjs` printed.
+1. Create a user task of each module with `bpmnProcessId` `TaxiRide` and `taskDefinition`
+   `confirmRide`.
+1. Run the test with the address of your cockpit and the pages of the two user tasks:
+
+   ```bash
+   BC_COCKPIT_URL=http://localhost:8080 \
+   BC_USER_TASK_PAGES="react-module=/tasks/4711 vue-module=/tasks/4712" \
+   node --test cockpit.test.js
+   ```
+
+The test opens each page and works with the form: it finds it in an open shadow root, fills in the
+comment, claims the task and opens a dialog. It passes for a cockpit with areas and for one
+without. If your cockpit needs a login, save a logged-in session with Playwright and name the file
+in `BC_STORAGE_STATE`.
+
+`npm test` runs this test against a small cockpit made of the reference host, once with areas and
+once without, so a failure points at the cockpit and not at the test.
 
 ## Building and testing this repository
 
@@ -216,15 +305,17 @@ npm test
 ```
 
 `npm test` runs the unit tests with the test runner of Node.js, builds the two example modules and
-runs the browser test. The browser test loads one example module, written once in React and once in
-Vue, side by side through the host, in Chromium. To use a Chromium of your own, set
-`BC_CHROMIUM_PATH`.
+runs the browser tests. The browser tests load one example module, written once in React and once in
+Vue, side by side through the host, in Chromium: with areas, without areas, and with and without the
+entry `Header`. Then they run the conformance test against the reference host. To use a Chromium of
+your own, set `BC_CHROMIUM_PATH`.
 
-| Script                  | What it does |
-|-------------------------|--------------|
-| `npm run test:unit`     | the unit tests of both packages |
-| `npm run build:examples`| builds `examples/react-module` and `examples/vue-module` into their `dist` folders and runs `bc-check-entries` on them |
-| `npm run test:browser`  | builds the examples and runs the browser test |
+| Script                      | What it does |
+|-----------------------------|--------------|
+| `npm run test:unit`         | the unit tests of both packages |
+| `npm run build:examples`    | builds `examples/react-module` and `examples/vue-module` into their `dist` folders and runs `bc-check-entries` on them |
+| `npm run build:conformance` | writes `dist/conformance` from the built examples |
+| `npm run test:browser`      | builds the examples and the conformance folder and runs the browser tests |
 
 ## License
 

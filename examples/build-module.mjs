@@ -1,6 +1,6 @@
 // Builds an example workflow module the way a real one builds: one ES module per entry with the
 // content hash in its name, no bare imports, and bc-manifest.json written from esbuild's list of
-// outputs. Then it runs bc-check-entries on the result.
+// outputs. Then it runs bc-check-entries on the result, with the module's own data entries.
 
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
@@ -11,8 +11,9 @@ import { checkEntries } from '@vanillabp/bc-module-kit/check';
 /**
  * @param {string} moduleDir the folder of the example module
  * @param {Record<string, string>} entries entry name -> source file, relative to the module
+ * @param {string[]} [dataEntries] data entries of the module beyond the four of the kit, for example Header
  */
-export async function buildModule(moduleDir, entries) {
+export async function buildModule(moduleDir, entries, dataEntries = []) {
   const outdir = resolve(moduleDir, 'dist');
   rmSync(outdir, { recursive: true, force: true });
   mkdirSync(outdir, { recursive: true });
@@ -50,7 +51,7 @@ export async function buildModule(moduleDir, entries) {
   const metafilePath = join(outdir, 'meta.json');
   writeFileSync(metafilePath, JSON.stringify(result.metafile));
 
-  const { problems } = checkEntries(manifestPath, { metafile: metafilePath });
+  const { problems } = checkEntries(manifestPath, { metafile: metafilePath, dataEntries });
   if (problems.length > 0) throw new Error(`bc-check-entries failed for ${moduleDir}:\n- ${problems.join('\n- ')}`);
   return { manifestPath, metafilePath };
 }
