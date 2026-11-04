@@ -36,6 +36,17 @@ export interface ModuleHostOptions {
   actions?: Record<string, ActionHandler>;
   /** Properties every drawn web component gets, for example `language` and `currentUser`. */
   properties?: Record<string, unknown>;
+  /**
+   * Data entries this host knows besides the four of the kit: entry -> the name of the function
+   * it exports, for example `{ Header: 'header' }`. The host asks no other entry.
+   */
+  entries?: Record<string, string>;
+  /**
+   * The areas of the page of a user task or a case, for example `['body', 'actions']`. The host
+   * draws the areas it knows and ignores the others. Without areas, or when a module offers none
+   * of them, it draws the web component of 'all'. By default there are none.
+   */
+  areas?: string[];
   /** Where dialogs go; by default `document.body`. */
   dialogContainer?: Element;
   logger?: Pick<Console, 'warn' | 'error'>;
@@ -43,7 +54,7 @@ export interface ModuleHostOptions {
 
 /** The web components of one part in the page. */
 export interface DrawnPart {
-  /** Area -> web component. An all-in-one form has the one area 'all'. */
+  /** Area -> web component. A form shown as one web component has the one area 'all'. */
   elements: Map<string, HTMLElement>;
   /** Sets properties on every web component again, for example a changed user task. */
   update(properties: Record<string, unknown>): void;
@@ -60,7 +71,14 @@ export interface ModuleHost {
   };
   readManifest(moduleId: string): Promise<BcManifest | undefined>;
   loadEntry(moduleId: string, entry: string): Promise<any>;
-  ask(moduleId: string, entry: string, args?: unknown[], exportName?: string): Promise<any>;
+  /** The areas this host knows, besides 'all'. */
+  readonly areas: readonly string[];
+  /** The data entries this host asks. */
+  readonly entries: readonly string[];
+  /** Area -> web component: what `draw` shows of what a data entry offers. */
+  pickAreas(element: BcPageParts['element']): Record<string, string>;
+  /** undefined for an entry this host does not know, or which the module does not offer. */
+  ask(moduleId: string, entry: string, args?: unknown[]): Promise<any>;
   load(moduleId: string, entry: string, elements: string[]): Promise<void>;
   draw(part: {
     moduleId: string;

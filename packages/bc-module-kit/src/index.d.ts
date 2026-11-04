@@ -11,20 +11,13 @@ export declare const USER_TASK_LIST: 'UserTaskList';
 export declare const WORKFLOW_LIST: 'WorkflowList';
 export declare const USER_TASK_FORM: 'UserTaskForm';
 export declare const WORKFLOW_PAGE: 'WorkflowPage';
-export declare const HEADER: 'Header';
-export declare const PAGES: 'Pages';
-export declare const DATA_ENTRIES: readonly ['UserTaskList', 'WorkflowList', 'UserTaskForm', 'WorkflowPage', 'Header', 'Pages'];
+export declare const DATA_ENTRIES: readonly ['UserTaskList', 'WorkflowList', 'UserTaskForm', 'WorkflowPage'];
 export declare const EXPORT_NAMES: Readonly<{
   UserTaskList: 'userTaskListColumns';
   WorkflowList: 'workflowListColumns';
   UserTaskForm: 'userTaskForm';
   WorkflowPage: 'workflowPage';
-  Header: 'header';
-  Pages: 'pages';
 }>;
-export declare const AREA_BODY: 'body';
-export declare const AREA_INFORMATION: 'information';
-export declare const AREA_ACTIONS: 'actions';
 export declare const AREA_ALL: 'all';
 
 /** A text per language. The keys are language codes like 'en' or 'de'. */
@@ -51,19 +44,17 @@ export interface BcElementRef {
   entry: string;
 }
 
-/** Area -> name of a web component. By convention 'body', 'information', 'actions'. */
+/**
+ * Area -> name of a web component. 'all' is the one every cockpit knows. A cockpit may know more
+ * areas, for example 'body' and 'actions'. It shows the areas it knows and ignores the others.
+ * Without areas of its own it shows the web component of 'all'.
+ */
 export type PageAreas = { [area: string]: string };
 
-/** One web component (the all-in-one form), or one per area. */
+/** One web component (the area 'all'), or one per area. */
 export interface BcPageParts {
   element: string | PageAreas;
   entry: string;
-}
-
-export interface BcPage extends BcElementRef {
-  id: string;
-  title: Translatable;
-  menu: boolean;
 }
 
 export type ColumnsOfUserTaskFunction<U = GuiApiData> = (userTask: U) => Column[] | undefined;
@@ -72,8 +63,6 @@ export type ColumnsOfWorkflowFunction<W = GuiApiData> = (workflow: W) => Column[
 export type UserTaskFormFunction<U = GuiApiData> = (userTask: U) => BcPageParts | undefined;
 /** undefined: this case is not the module's. */
 export type WorkflowPageFunction<W = GuiApiData> = (workflow: W) => BcPageParts | undefined;
-export type HeaderFunction<C = GuiApiData> = (currentUser: C) => BcElementRef[] | undefined;
-export type PagesFunction<C = GuiApiData> = (currentUser: C) => BcPage[] | undefined;
 
 // --- manifest --------------------------------------------------------------------------------
 

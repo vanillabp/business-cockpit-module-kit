@@ -11,12 +11,14 @@
     "packages/bc-module-kit",
     "packages/bc-module-host",
     "examples/react-module",
-    "examples/vue-module"
+    "examples/vue-module",
+    "examples/angular-module"
   ],
   "scripts": {
-    "build:examples": "npm run build --workspace examples/react-module --workspace examples/vue-module",
+    "build:examples": "npm run build --workspace examples/react-module --workspace examples/vue-module --workspace examples/angular-module",
     "test:unit": "node --test \"packages/*/test/**/*.test.js\"",
-    "test:browser": "npm run build:examples && node --test --test-concurrency=1 \"test/browser/**/*.test.js\"",
+    "build:conformance": "node conformance/build.mjs",
+    "test:browser": "npm run build:examples && npm run build:conformance && node --test --test-concurrency=1 \"test/browser/**/*.test.js\"",
     "test": "npm run test:unit && npm run test:browser"
   },
   "devDependencies": {

@@ -138,6 +138,58 @@ describe('ask', () => {
   });
 });
 
+describe('entries the host does not know', () => {
+  const withHeader = { ...manifest, entries: { ...manifest.entries, Header: 'entries/header-1.js' } };
+  const header = 'https://cockpit.example.com/wm/taxi-ride/entries/header-1.js';
+  const buttons = [{ entry: 'RideButtons', element: 'taxi-ride-new-ride' }];
+
+  it('a host without the entry Header neither loads it nor fails, and still shows the rest of the module', async () => {
+    const { host, imported, warnings } = testHost({ manifests: { 'taxi-ride': withHeader }, exports: { [header]: { header: () => buttons } } });
+    assert.deepEqual(host.entries, ['UserTaskList', 'WorkflowList', 'UserTaskForm', 'WorkflowPage']);
+    assert.equal(await host.ask('taxi-ride', 'Header', [{ id: 'anna' }]), undefined);
+    await host.loadEntry('taxi-ride', 'UserTaskList');
+    assert.deepEqual(imported, ['https://cockpit.example.com/wm/taxi-ride/entries/list-1.js']);
+    assert.deepEqual(warnings, []);
+  });
+
+  it('a host configured with the entry Header asks it', async () => {
+    const { host } = testHost({ manifests: { 'taxi-ride': withHeader }, exports: { [header]: { header: () => buttons } }, entries: { Header: 'header' } });
+    assert.ok(host.entries.includes('Header'));
+    assert.deepEqual(await host.ask('taxi-ride', 'Header', [{ id: 'anna' }]), buttons);
+  });
+});
+
+describe('the areas of a page', () => {
+  const offered = { all: 'm-all', body: 'm-body', information: 'm-information', actions: 'm-actions' };
+
+  it('a host without areas shows the web component of all', () => {
+    const { host } = testHost();
+    assert.deepEqual(host.areas, []);
+    assert.deepEqual(host.pickAreas(offered), { all: 'm-all' });
+    assert.deepEqual(host.pickAreas('m-form'), { all: 'm-form' });
+  });
+
+  it('a host with areas shows the areas it knows, in its order, and ignores the others', () => {
+    const { host } = testHost({ areas: ['actions', 'body', 'sidebar'] });
+    assert.deepEqual(host.pickAreas(offered), { actions: 'm-actions', body: 'm-body' });
+  });
+
+  it('a host with areas shows the web component of all when the module offers none of its areas', () => {
+    const { host } = testHost({ areas: ['body', 'actions'] });
+    assert.deepEqual(host.pickAreas({ all: 'm-all', sidebar: 'm-sidebar' }), { all: 'm-all' });
+    assert.deepEqual(host.pickAreas('m-form'), { all: 'm-form' });
+  });
+
+  it('shows nothing, and says why, when a module offers neither an area of the host nor all', async () => {
+    const form = 'https://cockpit.example.com/wm/taxi-ride/entries/form-1.js';
+    const { host, warnings, imported } = testHost({ exports: { [form]: { userTaskForm: () => ({ entry: 'ConfirmRideForm', element: { body: 'm-body' } }) } } });
+    assert.deepEqual(host.pickAreas({ body: 'm-body' }), {});
+    assert.equal(await host.showUserTask('taxi-ride', {}, /** @type {any} */ ({})), undefined);
+    assert.match(warnings[0], /taxi-ride offers no web component for the area all in its entry UserTaskForm/);
+    assert.deepEqual(imported, [form]);
+  });
+});
+
 describe('the package', () => {
   it('depends on nothing but the kit', () => {
     const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));

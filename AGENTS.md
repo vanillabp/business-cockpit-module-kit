@@ -13,19 +13,26 @@ of them has a bug. Fix both in the same week, and say in the pull request which 
 - `packages/bc-module-kit` holds only what every cockpit shares with every module: the manifest,
   `bc-check-entries`, the event protocol, `defineBcElement` and the names of the entries. Something
   only one organisation's cockpit knows, like its `ui-uri-type` values or its own extension points,
-  goes into that cockpit's types library, not here.
+  goes into that cockpit's types library, not here. The kit is the minimum every cockpit keeps:
+  the four data entries, the area `all`, the manifest, the event protocol, `defineBcElement` and
+  `bc-check-entries`. `Header`, `Pages` and areas like `body` or `actions` differ from one
+  organisation to the next, so they stay out of the kit's constants.
 - `bc-module-kit` has no dependencies and no peer dependencies (`PKG-006`). The generated types
   library takes it in when it is built, and it must stay without dependencies as well.
 - The files below `packages/bc-module-kit/src` which a browser loads import nothing but each other.
   `src/check.js` and `bin/` are for Node.js and may use `node:` modules.
 - `packages/bc-module-host` is for tests, not for production. Keep it small. It shows what a cockpit
   does, so a module author can read it in one sitting.
-- `examples/` holds two example modules, React and Vue. They are private and never published.
+- `examples/` holds three example modules: React, Vue and Angular. They are private and never
+  published as npm packages. Built, they are part of `dist/conformance`, the test a generated cockpit runs.
+- `conformance/` holds that test. It runs against any cockpit, so it only uses what the minimum
+  promises.
 
 ## Tests
 
-Unit tests use the test runner of Node.js 24. The browser test uses Playwright with Chromium and
-loads both example modules side by side through the host. `npm test` runs both. A test that proves
+Unit tests use the test runner of Node.js 24. The browser tests use Playwright with Chromium. They
+load all three example modules side by side through the host, with and without areas, and run the
+conformance test against the host. `npm test` runs all of them. A test that proves
 an item of the checklist in the skill names its id in the title, for example
 `EXT-030 fetches every file of a module at most once`.
 

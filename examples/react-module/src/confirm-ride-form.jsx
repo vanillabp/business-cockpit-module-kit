@@ -1,5 +1,6 @@
-// Visual entry ConfirmRideForm, written in React. Evaluating it defines the web components of
-// the areas 'body' and 'actions' and of a dialog. Each one renders into its own shadow root.
+// Visual entry ConfirmRideForm, written in React. Evaluating it defines four web components: the
+// whole form for the area 'all', the same form split into the areas 'body' and 'actions', and a
+// dialog. Each one renders into its own shadow root.
 
 import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -20,15 +21,15 @@ function reactElement(name, Component) {
   });
 }
 
-function Body({ userTask }) {
+/** The fields of the form. It reports whether the comment is valid. */
+function Fields({ userTask, onValid }) {
   const [comment, setComment] = useState('');
   const onInput = (event) => {
     setComment(event.target.value);
-    userTask.sendTo('actions', { valid: event.target.value.length > 0 });
+    onValid(event.target.value.length > 0);
   };
   return (
     <>
-      <style>{STYLE}</style>
       <p data-test="framework">React</p>
       <p data-test="title">{userTask.title}</p>
       <input data-test="comment" value={comment} onInput={onInput} onChange={() => {}} />
@@ -36,13 +37,9 @@ function Body({ userTask }) {
   );
 }
 
-function Actions({ userTask, openDialog, showNotification }) {
-  const [valid, setValid] = useState(false);
+/** The buttons of the form. */
+function Buttons({ userTask, openDialog, showNotification, valid }) {
   const [state, setState] = useState('');
-  useEffect(() => {
-    const subscription = userTask.receiveMessage((message) => setValid(Boolean(message?.valid)));
-    return () => { subscription.unsubscribe(); };
-  }, []);
   const claim = async () => {
     try {
       await userTask.claim();
@@ -55,11 +52,47 @@ function Actions({ userTask, openDialog, showNotification }) {
   const dialog = async () => setState(`dialog: ${await openDialog({ element: 'react-module-confirm-ride-dialog', entry: 'ConfirmRideForm' }, { from: 'actions' })}`);
   return (
     <>
-      <style>{STYLE}</style>
       <button data-test="claim" onClick={claim}>Claim</button>
       <button data-test="complete" disabled={!valid}>Complete</button>
       <button data-test="dialog" onClick={dialog}>Dialog</button>
       <p data-test="state">{state}</p>
+    </>
+  );
+}
+
+/** The area 'all': fields and buttons in one web component. */
+function All(props) {
+  const [valid, setValid] = useState(false);
+  return (
+    <>
+      <style>{STYLE}</style>
+      <Fields {...props} onValid={setValid} />
+      <Buttons {...props} valid={valid} />
+    </>
+  );
+}
+
+/** The area 'body': the fields. It tells the area 'actions' whether the comment is valid. */
+function Body(props) {
+  return (
+    <>
+      <style>{STYLE}</style>
+      <Fields {...props} onValid={(valid) => props.userTask.sendTo('actions', { valid })} />
+    </>
+  );
+}
+
+/** The area 'actions': the buttons. */
+function Actions(props) {
+  const [valid, setValid] = useState(false);
+  useEffect(() => {
+    const subscription = props.userTask.receiveMessage((message) => setValid(Boolean(message?.valid)));
+    return () => { subscription.unsubscribe(); };
+  }, []);
+  return (
+    <>
+      <style>{STYLE}</style>
+      <Buttons {...props} valid={valid} />
     </>
   );
 }
@@ -73,6 +106,7 @@ function Dialog({ data, closeDialog }) {
   );
 }
 
+reactElement('react-module-confirm-ride', All);
 reactElement('react-module-confirm-ride-body', Body);
 reactElement('react-module-confirm-ride-actions', Actions);
 reactElement('react-module-confirm-ride-dialog', Dialog);

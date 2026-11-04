@@ -1,6 +1,8 @@
 /**
- * The names of the entries a workflow module offers in its bc-manifest.json, and the names of
- * the functions those entries export.
+ * The names of the entries every cockpit knows, and the names of the functions those entries
+ * export. This is the minimum. A cockpit may know more entries and more areas of a page, for
+ * example a Header entry or the areas body, information and actions. Those differ from one
+ * organisation to the next, so they belong to the types library of that cockpit, not here.
  *
  * @module @vanillabp/bc-module-kit/entries
  */
@@ -17,15 +19,9 @@ export const USER_TASK_FORM = 'UserTaskForm';
 /** The page of a case. The entry exports `workflowPage`. */
 export const WORKFLOW_PAGE = 'WorkflowPage';
 
-/** Buttons in the header. The entry exports `header`. Only cockpits which have this extension point ask it. */
-export const HEADER = 'Header';
-
-/** Pages of a module and their menu entries. The entry exports `pages`. Only cockpits which have this extension point ask it. */
-export const PAGES = 'Pages';
-
 /**
  * The entries which carry no framework. `bc-check-entries` checks their size and their content.
- * A cockpit with extension points of its own adds their names, for example with the option
+ * A module with entries of its own, for example `Header`, names them with the option
  * `--data-entry` of `bc-check-entries`.
  */
 export const DATA_ENTRIES = Object.freeze([
@@ -33,8 +29,6 @@ export const DATA_ENTRIES = Object.freeze([
   WORKFLOW_LIST,
   USER_TASK_FORM,
   WORKFLOW_PAGE,
-  HEADER,
-  PAGES,
 ]);
 
 /** For each data entry, the name of the function it exports. */
@@ -43,18 +37,10 @@ export const EXPORT_NAMES = Object.freeze({
   [WORKFLOW_LIST]: 'workflowListColumns',
   [USER_TASK_FORM]: 'userTaskForm',
   [WORKFLOW_PAGE]: 'workflowPage',
-  [HEADER]: 'header',
-  [PAGES]: 'pages',
 });
 
-/** The main area of a page. A long form scrolls in it. */
-export const AREA_BODY = 'body';
-
-/** The top of the column on the right of a page. */
-export const AREA_INFORMATION = 'information';
-
-/** The bottom of the column on the right of a page. It never scrolls away. */
-export const AREA_ACTIONS = 'actions';
-
-/** The area of the one web component of an all-in-one page. */
+/**
+ * The area of the one web component which shows the whole page. Every cockpit knows it. A
+ * cockpit without areas of its own shows this web component.
+ */
 export const AREA_ALL = 'all';

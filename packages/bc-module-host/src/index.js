@@ -4,6 +4,10 @@
  * ask, load and draw, and the cockpit's side of the event protocol. It is a reference for tests,
  * not a cockpit: it has no lists, no routing and no login.
  *
+ * By default it is a cockpit with the minimum of the contract: the four entries of the kit and
+ * the area `all`. Options add entries like `Header` and areas like `body` and `actions`. Entries
+ * and areas the host does not know are ignored, without an error.
+ *
  * @module @vanillabp/bc-module-host
  */
 
@@ -71,14 +75,19 @@ export function createModuleHost(options = {}) {
     actions = {},
     logger = globalThis.console,
     dialogContainer,
+    entries: extraEntries = {},
+    areas: pageAreas = [],
   } = options;
+
+  /** @type {Record<string, string>} data entry -> the name of the function it exports */
+  const knownEntries = { ...EXPORT_NAMES, ...extraEntries };
 
   /** @type {Map<string, { id: string, uri?: string, version?: string }>} */
   const modules = new Map((options.modules ?? []).map((module) => [module.id, module]));
   /** @type {Map<string, Promise<{ manifest: any, url: string } | undefined>>} */
   const manifests = new Map();
   /** @type {Map<string, Promise<any>>} */
-  const entries = new Map();
+  const loadedEntries = new Map();
   let registryLoaded = options.modules ? Promise.resolve() : undefined;
 
   const manifestUrlOf = (moduleId) => new URL(`/wm/${encodeURIComponent(moduleId)}/${MANIFEST_FILE_NAME}`, baseUrl).href;
@@ -136,7 +145,7 @@ export function createModuleHost(options = {}) {
    */
   function loadEntry(moduleId, entry) {
     const key = `${moduleId}\n${entry}`;
-    let promise = entries.get(key);
+    let promise = loadedEntries.get(key);
     if (!promise) {
       promise = (async () => {
         const read = await readManifestOf(moduleId);
@@ -145,9 +154,9 @@ export function createModuleHost(options = {}) {
         if (!url) return undefined;
         return importModule(url);
       })();
-      entries.set(key, promise);
+      loadedEntries.set(key, promise);
       promise.catch(() => {
-        entries.delete(key);
+        loadedEntries.delete(key);
         manifests.delete(moduleId);
       });
     }
@@ -156,14 +165,16 @@ export function createModuleHost(options = {}) {
 
   /**
    * Step one: ask a data entry. Calls its function with the arguments and returns the answer, or
-   * `undefined` when the module does not name the entry or does not export the function.
+   * `undefined` when the module does not name the entry or does not export the function. An entry
+   * this host does not know is not loaded at all, and the answer is `undefined` as well.
    *
    * @param {string} moduleId
    * @param {string} entry a data entry, for example `UserTaskForm`
    * @param {unknown[]} args
-   * @param {string} [exportName] the function's name; by default the one the kit knows for the entry
    */
-  async function ask(moduleId, entry, args = [], exportName = EXPORT_NAMES[entry]) {
+  async function ask(moduleId, entry, args = []) {
+    const exportName = knownEntries[entry];
+    if (exportName === undefined) return undefined;
     let exports;
     try {
       exports = await loadEntry(moduleId, entry);
@@ -214,16 +225,31 @@ export function createModuleHost(options = {}) {
     }
   }
 
+  /**
+   * Picks the web components to show from what a data entry offers. The areas this host knows
+   * come first; the areas it does not know are ignored. When none of its areas is offered, or
+   * it has no areas, it shows the web component of `all`.
+   *
+   * @param {string | Record<string, string>} element
+   * @returns {Record<string, string>} area -> web component; empty when nothing fits
+   */
+  function pickAreas(element) {
+    const offered = typeof element === 'string' ? { [AREA_ALL]: element } : (element ?? {});
+    const known = pageAreas.filter((area) => area !== AREA_ALL && typeof offered[area] === 'string');
+    if (known.length > 0) return Object.fromEntries(known.map((area) => [area, offered[area]]));
+    return typeof offered[AREA_ALL] === 'string' ? { [AREA_ALL]: offered[AREA_ALL] } : {};
+  }
+
   let nextSubscriptionId = 0;
 
   /**
    * Step three: draw web components into a container and run the cockpit's side of the event
-   * protocol for them. Run `load` before.
+   * protocol for them. Run `load` before. Which areas are drawn follows `pickAreas`.
    *
    * @param {{ moduleId: string, entry: string, element: string | Record<string, string>, container: Element, properties?: Record<string, unknown> }} part
    */
   function draw({ moduleId, entry, element, container, properties = {} }) {
-    const areas = typeof element === 'string' ? { [AREA_ALL]: element } : element;
+    const areas = pickAreas(element);
     /** @type {Map<string, HTMLElement>} */
     const elements = new Map();
     /** @type {Map<string, string>} area -> subscription id */
@@ -312,9 +338,13 @@ export function createModuleHost(options = {}) {
       return new Promise((resolve) => {
         dialogs.set(created, (result) => {
           dialogs.delete(created);
-          part.remove();
-          layer.remove();
           resolve(result);
+          // The answer to closeDialog goes out first. Removed before it, the web component would
+          // see its request fail with DISCONNECTED.
+          setTimeout(() => {
+            part.remove();
+            layer.remove();
+          });
         });
       });
     },
@@ -354,7 +384,12 @@ export function createModuleHost(options = {}) {
   async function showPage({ moduleId, entry, data, property, container, properties = {} }) {
     const parts = await ask(moduleId, entry, [data]);
     if (!parts) return undefined;
-    const names = typeof parts.element === 'string' ? [parts.element] : Object.values(parts.element);
+    const names = Object.values(pickAreas(parts.element));
+    if (names.length === 0) {
+      const known = pageAreas.length > 0 ? `the areas ${pageAreas.join(', ')} or ${AREA_ALL}` : `the area ${AREA_ALL}`;
+      logger?.warn?.(`The module ${moduleId} offers no web component for ${known} in its entry ${entry}, so this host shows nothing`);
+      return undefined;
+    }
     await load(moduleId, parts.entry, names);
     return draw({ moduleId, entry: parts.entry, element: parts.element, container, properties: { ...options.properties, ...properties, [property]: data } });
   }
@@ -363,6 +398,9 @@ export function createModuleHost(options = {}) {
     registry,
     readManifest: (moduleId) => readManifestOf(moduleId).then((read) => read?.manifest),
     loadEntry,
+    areas: Object.freeze([...pageAreas]),
+    entries: Object.freeze(Object.keys(knownEntries)),
+    pickAreas,
     ask,
     load,
     draw,
