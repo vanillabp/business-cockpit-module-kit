@@ -1,0 +1,15 @@
+{
+  "name": "@vanillabp/bc-example-vue-module",
+  "private": true,
+  "version": "0.0.0",
+  "description": "An example workflow module whose forms use Vue. Only for the tests of the kit.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "@vanillabp/bc-module-kit": "0.1.0-SNAPSHOT",
+    "vue": "3.5.44"
+  }
+}

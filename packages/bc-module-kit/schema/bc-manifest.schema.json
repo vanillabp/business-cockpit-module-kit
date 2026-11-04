@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/vanillabp/business-cockpit-module-kit/blob/main/packages/bc-module-kit/schema/bc-manifest.schema.json",
+  "title": "bc-manifest.json",
+  "description": "The entries a workflow module offers to a VanillaBP Business Cockpit, and the files they are in.",
+  "type": "object",
+  "required": ["manifestVersion", "entries"],
+  "properties": {
+    "manifestVersion": {
+      "description": "The version of this format. A cockpit refuses a higher one it does not know.",
+      "const": 1
+    },
+    "buildVersion": {
+      "description": "The version of the module's build, shown in a details view, if at all.",
+      "type": "string"
+    },
+    "buildTimestamp": {
+      "description": "When the module was built, also only for a details view.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "entries": {
+      "description": "Entry name to file. The file is relative to the manifest.",
+      "type": "object",
+      "propertyNames": {
+        "minLength": 1,
+        "not": { "pattern": "^\\./" }
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "not": {
+          "anyOf": [
+            { "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:" },
+            { "pattern": "^/" },
+            { "pattern": "(^|/)\\.\\.(/|$|[?#])" }
+          ]
+        }
+      }
+    }
+  }
+}

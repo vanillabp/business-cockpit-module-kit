@@ -1,0 +1,26 @@
+{
+  "name": "business-cockpit-module-kit",
+  "private": true,
+  "description": "The module kit of the VanillaBP Business Cockpit and its reference host.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "workspaces": [
+    "packages/bc-module-kit",
+    "packages/bc-module-host",
+    "examples/react-module",
+    "examples/vue-module"
+  ],
+  "scripts": {
+    "build:examples": "npm run build --workspace examples/react-module --workspace examples/vue-module",
+    "test:unit": "node --test \"packages/*/test/**/*.test.js\"",
+    "test:browser": "npm run build:examples && node --test --test-concurrency=1 \"test/browser/**/*.test.js\"",
+    "test": "npm run test:unit && npm run test:browser"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "playwright": "1.64.1"
+  }
+}

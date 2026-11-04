@@ -1,0 +1,16 @@
+{
+  "name": "@vanillabp/bc-example-react-module",
+  "private": true,
+  "version": "0.0.0",
+  "description": "An example workflow module whose forms use React. Only for the tests of the kit.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "@vanillabp/bc-module-kit": "0.1.0-SNAPSHOT",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  }
+}

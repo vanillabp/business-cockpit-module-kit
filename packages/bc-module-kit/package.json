@@ -1,0 +1,39 @@
+{
+  "name": "@vanillabp/bc-module-kit",
+  "version": "0.1.0-SNAPSHOT",
+  "description": "The module's side of the contract between a VanillaBP Business Cockpit and a workflow module: bc-manifest.json, bc-check-entries, the event protocol and the names of the entries.",
+  "license": "Apache-2.0",
+  "author": "Phactum Softwareentwicklung GmbH (https://www.phactum.at/)",
+  "homepage": "https://www.vanillabp.io",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vanillabp/business-cockpit-module-kit.git",
+    "directory": "packages/bc-module-kit"
+  },
+  "keywords": ["vanillabp", "business-cockpit", "workflow", "web-components"],
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=24"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    },
+    "./check": {
+      "types": "./src/check.d.ts",
+      "default": "./src/check.js"
+    },
+    "./schema/bc-manifest.schema.json": "./schema/bc-manifest.schema.json",
+    "./package.json": "./package.json"
+  },
+  "types": "./src/index.d.ts",
+  "bin": {
+    "bc-check-entries": "bin/bc-check-entries.js"
+  },
+  "files": ["src", "bin", "schema", "NOTICE"],
+  "scripts": {
+    "test": "node --test \"test/**/*.test.js\""
+  }
+}

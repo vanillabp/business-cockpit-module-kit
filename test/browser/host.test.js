@@ -1,0 +1,207 @@
+// The browser test: the reference host loads the same example module, once written in React and
+// once in Vue, side by side in Chromium. Run `npm run build:examples` before; `npm run
+// test:browser` does both.
+
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { after, before, describe, it } from 'node:test';
+import { build } from 'esbuild';
+import { chromium } from 'playwright';
+import { findFrameworkCode } from '@vanillabp/bc-module-kit/check';
+import { startServer } from './server.js';
+
+const root = join(import.meta.dirname, '..', '..');
+const examples = join(root, 'examples');
+const hostBundle = join(import.meta.dirname, '.build', 'host.js');
+
+const userTask = (id) => ({ id, title: `Confirm ride ${id}`, bpmnProcessId: 'TaxiRide', taskDefinition: 'confirmRide' });
+
+let server;
+let browser;
+
+before(async () => {
+  await build({ entryPoints: [join(import.meta.dirname, 'page.js')], bundle: true, format: 'esm', outfile: hostBundle, logLevel: 'warning' });
+  server = await startServer({
+    files: { '/': join(import.meta.dirname, 'index.html'), '/host.js': hostBundle },
+    folders: {
+      '/wm/react-module/': join(examples, 'react-module', 'dist'),
+      '/wm/vue-module/': join(examples, 'vue-module', 'dist'),
+    },
+    virtual: {
+      // A module whose visual entry never defines the web component its data entry names.
+      '/wm/slow-module/bc-manifest.json': JSON.stringify({ manifestVersion: 1, entries: { UserTaskForm: 'form.js', SlowForm: 'slow.js' } }),
+      '/wm/slow-module/form.js': 'export const userTaskForm = () => ({ entry: "SlowForm", element: "slow-module-form" });',
+      '/wm/slow-module/slow.js': '// defines nothing',
+    },
+  });
+  browser = await chromium.launch(process.env.BC_CHROMIUM_PATH ? { executablePath: process.env.BC_CHROMIUM_PATH } : {});
+});
+
+after(async () => {
+  await browser?.close();
+  await server?.close();
+});
+
+/** Opens the test page and waits for the host. */
+async function openPage(query = '') {
+  const page = await browser.newPage();
+  const consoleErrors = [];
+  page.on('pageerror', (error) => consoleErrors.push(error.message));
+  await page.goto(`${server.url}/${query}`);
+  await page.waitForFunction(() => window.bcTest !== undefined);
+  return { page, consoleErrors };
+}
+
+/** Waits until a locator shows a text, at most five seconds. */
+async function assertText(locator, expected) {
+  try {
+    await locator.filter({ hasText: expected }).waitFor({ timeout: 5000 });
+  } catch {
+    assert.equal(await locator.textContent(), expected);
+  }
+}
+
+/** Reads a text inside the shadow root of the web component of a page area. */
+function shadowText(page, pageId, area, testId) {
+  return page.locator(`#${pageId} [data-bc-area="${area}"] [data-test="${testId}"]`);
+}
+
+describe('the reference host in Chromium', () => {
+  it('EXT-034 loading the data entries of both modules fetches no file of their frameworks', async () => {
+    const { page } = await openPage();
+    const answers = await page.evaluate(async (task) => {
+      const { host } = window.bcTest;
+      const result = {};
+      for (const moduleId of ['react-module', 'vue-module']) {
+        result[moduleId] = {
+          columns: await host.ask(moduleId, 'UserTaskList', [task]),
+          form: await host.ask(moduleId, 'UserTaskForm', [task]),
+        };
+      }
+      return result;
+    }, userTask('1'));
+    assert.equal(answers['react-module'].columns[0].path, 'details.customer');
+    assert.deepEqual(answers['vue-module'].form, {
+      entry: 'ConfirmRideForm',
+      element: { body: 'vue-module-confirm-ride-body', actions: 'vue-module-confirm-ride-actions' },
+    });
+
+    const loaded = await page.evaluate(() => performance.getEntriesByType('resource').map(({ name }) => new URL(name).pathname).filter((path) => path.startsWith('/wm/')));
+    const scripts = loaded.filter((path) => path.endsWith('.js'));
+    assert.ok(scripts.length >= 4, loaded.join(', '));
+    assert.ok(!scripts.some((path) => path.includes('ConfirmRideForm')), loaded.join(', '));
+    for (const path of scripts) {
+      const [, , moduleId, ...rest] = path.split('/');
+      const source = readFileSync(join(examples, moduleId, 'dist', ...rest), 'utf8');
+      assert.deepEqual(findFrameworkCode(source), [], path);
+    }
+    await page.close();
+  });
+
+  it('EXT-029 EXT-005 shows the React and the Vue form side by side, each in its own shadow DOM', async () => {
+    const { page, consoleErrors } = await openPage();
+    const areas = await page.evaluate(async ([a, b]) => Promise.all([
+      window.bcTest.show('react-module', a, 'react-page'),
+      window.bcTest.show('vue-module', b, 'vue-page'),
+    ]), [userTask('1'), userTask('2')]);
+    assert.deepEqual(areas, [['body', 'actions'], ['body', 'actions']]);
+
+    assert.equal(await shadowText(page, 'react-page', 'body', 'framework').textContent(), 'React');
+    assert.equal(await shadowText(page, 'vue-page', 'body', 'framework').textContent(), 'Vue');
+    assert.equal(await shadowText(page, 'react-page', 'body', 'title').textContent(), 'Confirm ride 1');
+    assert.equal(await shadowText(page, 'vue-page', 'body', 'title').textContent(), 'Confirm ride 2');
+
+    const shadow = await page.evaluate(() => [...document.querySelectorAll('main [data-bc-area] > *')].map((element) => [element.localName, element.shadowRoot?.mode, element.area]));
+    assert.deepEqual(shadow, [
+      ['react-module-confirm-ride-body', 'open', 'body'],
+      ['react-module-confirm-ride-actions', 'open', 'actions'],
+      ['vue-module-confirm-ride-body', 'open', 'body'],
+      ['vue-module-confirm-ride-actions', 'open', 'actions'],
+    ]);
+    const color = (locator) => locator.evaluate((element) => getComputedStyle(element).color);
+    assert.equal(await color(shadowText(page, 'react-page', 'body', 'framework')), 'rgb(200, 0, 0)');
+    assert.equal(await color(shadowText(page, 'vue-page', 'actions', 'claim')), 'rgb(200, 0, 0)');
+    assert.equal(await color(page.locator('#outside')), 'rgb(0, 0, 255)');
+    assert.deepEqual(consoleErrors, []);
+    await page.close();
+  });
+
+  it('EXT-030 fetches every file of a module at most once, however many of its parts are shown', async () => {
+    const { page } = await openPage();
+    const before = server.requests.length;
+    await page.evaluate(async (task) => {
+      await window.bcTest.host.ask('react-module', 'UserTaskList', [task]);
+      await window.bcTest.show('react-module', task, 'react-page');
+      await window.bcTest.host.ask('react-module', 'UserTaskList', [task]);
+    }, userTask('1'));
+    const fetched = server.requests.slice(before);
+    assert.deepEqual(fetched.filter((path, index) => fetched.indexOf(path) !== index), []);
+    assert.ok(fetched.includes('/wm/react-module/bc-manifest.json'));
+    await page.close();
+  });
+
+  for (const [moduleId, pageId, framework] of [['react-module', 'react-page', 'React'], ['vue-module', 'vue-page', 'Vue']]) {
+    it(`carries a message from body to actions, and claims through the event protocol, in ${framework}`, async () => {
+      const { page } = await openPage();
+      await page.evaluate(async ([id, task, container]) => window.bcTest.show(id, task, container), [moduleId, userTask('7'), pageId]);
+      const complete = shadowText(page, pageId, 'actions', 'complete');
+      assert.equal(await complete.isDisabled(), true);
+      await shadowText(page, pageId, 'body', 'comment').pressSequentially('ok');
+      await page.waitForFunction(([selector]) => !document.querySelector(selector).shadowRoot.querySelector('[data-test="complete"]').disabled, [`#${pageId} [data-bc-area="actions"] > *`]);
+
+      await shadowText(page, pageId, 'actions', 'claim').click();
+      await page.waitForFunction(() => window.bcTest.notifications.length === 1);
+      await assertText(shadowText(page, pageId, 'actions', 'state'), 'claimed');
+      assert.deepEqual(await page.evaluate(() => window.bcTest.calls), [{ action: 'userTask.claim', moduleId, area: 'actions', userTaskId: '7' }]);
+      assert.deepEqual(await page.evaluate(() => window.bcTest.notifications), [{ moduleId, level: 'success', text: 'Claimed', sticky: false }]);
+      await page.close();
+    });
+
+    it(`EXT-018 EXT-039 opens a dialog and resolves with what it closed with, in ${framework}`, async () => {
+      const { page } = await openPage();
+      await page.evaluate(async ([id, task, container]) => window.bcTest.show(id, task, container), [moduleId, userTask('8'), pageId]);
+      await shadowText(page, pageId, 'actions', 'dialog').click();
+      const dialog = page.locator(`dialog[data-bc-dialog="${moduleId}-confirm-ride-dialog"]`);
+      assert.equal(await dialog.locator('[data-test="dialog-data"]').textContent(), 'actions');
+      await dialog.locator('[data-test="close"]').click();
+      await page.waitForFunction(() => document.querySelector('dialog') === null);
+      await assertText(shadowText(page, pageId, 'actions', 'state'), `dialog: closed by ${framework}`);
+      await page.close();
+    });
+  }
+
+  it('EXT-007 EXT-008 EXT-009 answers every request once, with UNKNOWN_ACTION, REFUSED or NO_TARGET where they apply', async () => {
+    const { page } = await openPage();
+    await page.evaluate(async (task) => window.bcTest.show('vue-module', task, 'vue-page'), userTask('9'));
+    const body = '#vue-page [data-bc-area="body"] > *';
+    const answers = await page.evaluate(async (selector) => {
+      const { rawRequest } = window.bcTest;
+      return [
+        await rawRequest(selector, 'foo.bar', {}),
+        await rawRequest(selector, 'userTask.unclaim', { userTaskId: '9' }),
+        await rawRequest(selector, 'page.sendTo', { target: 'nowhere', message: 1 }),
+        await rawRequest(selector, 'page.sendTo', { target: 'actions', message: { valid: true } }),
+      ];
+    }, body);
+    assert.deepEqual(answers.map(({ ok, error }) => (ok ? 'ok' : [error.code, error.status])), [
+      ['UNKNOWN_ACTION', undefined],
+      ['REFUSED', 409],
+      ['NO_TARGET', undefined],
+      'ok',
+    ]);
+    await page.close();
+  });
+
+  it('EXT-036 names the module, the entry and the web component which was not defined in time', async () => {
+    const { page } = await openPage('?whenDefined=300');
+    const error = await page.evaluate(async (task) => window.bcTest.show('slow-module', task, 'slow-page').then(
+      () => undefined,
+      (e) => ({ name: e.name, step: e.step, moduleId: e.moduleId, entry: e.entry, element: e.element }),
+    ), userTask('1'));
+    assert.deepEqual(error, { name: 'BcHostError', step: 'load', moduleId: 'slow-module', entry: 'SlowForm', element: 'slow-module-form' });
+    const errors = await page.evaluate(() => window.bcTest.errors);
+    assert.match(errors[0], /slow-module did not define the web component slow-module-form within 300 ms/);
+    await page.close();
+  });
+});

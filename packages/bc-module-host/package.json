@@ -1,0 +1,34 @@
+{
+  "name": "@vanillabp/bc-module-host",
+  "version": "0.1.0-SNAPSHOT",
+  "description": "A minimal host which loads the parts of VanillaBP workflow modules the way a Business Cockpit does. For tests of a module, not for production.",
+  "license": "Apache-2.0",
+  "author": "Phactum Softwareentwicklung GmbH (https://www.phactum.at/)",
+  "homepage": "https://www.vanillabp.io",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vanillabp/business-cockpit-module-kit.git",
+    "directory": "packages/bc-module-host"
+  },
+  "keywords": ["vanillabp", "business-cockpit", "workflow", "testing"],
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=24"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "types": "./src/index.d.ts",
+  "files": ["src", "NOTICE"],
+  "dependencies": {
+    "@vanillabp/bc-module-kit": "0.1.0-SNAPSHOT"
+  },
+  "scripts": {
+    "test": "node --test \"test/**/*.test.js\""
+  }
+}
