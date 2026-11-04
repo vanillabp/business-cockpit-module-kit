@@ -2,3 +2,4 @@ node_modules/
 dist/
 test/browser/.build/
 *.log
+examples/angular-module/.ngc/

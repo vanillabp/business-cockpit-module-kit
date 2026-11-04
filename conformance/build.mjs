@@ -11,7 +11,7 @@ const kit = JSON.parse(readFileSync(join(root, 'packages', 'bc-module-kit', 'pac
 const { devDependencies } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 
 rmSync(out, { recursive: true, force: true });
-for (const id of ['react-module', 'vue-module']) {
+for (const id of ['react-module', 'vue-module', 'angular-module']) {
   const dist = join(root, 'examples', id, 'dist');
   if (!existsSync(join(dist, 'bc-manifest.json'))) throw new Error(`${dist} has no bc-manifest.json; run npm run build:examples first`);
   cpSync(dist, join(out, 'wm', id), { recursive: true, filter: (file) => !file.endsWith('meta.json') });

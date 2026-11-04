@@ -1,0 +1,22 @@
+{
+  "name": "@vanillabp/bc-example-angular-module",
+  "private": true,
+  "version": "0.0.0",
+  "description": "An example workflow module whose forms use Angular. Only for the tests of the kit.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "@angular/common": "22.2.4",
+    "@angular/compiler": "22.2.4",
+    "@angular/compiler-cli": "22.2.4",
+    "@angular/core": "22.2.4",
+    "@angular/platform-browser": "22.2.4",
+    "@babel/core": "8.0.1",
+    "@vanillabp/bc-module-kit": "0.1.0-SNAPSHOT",
+    "rxjs": "7.8.2",
+    "typescript": "6.0.3"
+  }
+}

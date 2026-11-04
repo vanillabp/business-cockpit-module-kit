@@ -23,15 +23,15 @@ of them has a bug. Fix both in the same week, and say in the pull request which 
   `src/check.js` and `bin/` are for Node.js and may use `node:` modules.
 - `packages/bc-module-host` is for tests, not for production. Keep it small. It shows what a cockpit
   does, so a module author can read it in one sitting.
-- `examples/` holds two example modules, React and Vue. They are private and never published as
-  npm packages. Built, they are part of `dist/conformance`, the test a generated cockpit runs.
+- `examples/` holds three example modules: React, Vue and Angular. They are private and never
+  published as npm packages. Built, they are part of `dist/conformance`, the test a generated cockpit runs.
 - `conformance/` holds that test. It runs against any cockpit, so it only uses what the minimum
   promises.
 
 ## Tests
 
 Unit tests use the test runner of Node.js 24. The browser tests use Playwright with Chromium. They
-load both example modules side by side through the host, with and without areas, and run the
+load all three example modules side by side through the host, with and without areas, and run the
 conformance test against the host. `npm test` runs all of them. A test that proves
 an item of the checklist in the skill names its id in the title, for example
 `EXT-030 fetches every file of a module at most once`.

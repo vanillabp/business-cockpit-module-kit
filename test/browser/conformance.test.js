@@ -1,5 +1,5 @@
 // Runs the conformance test of dist/conformance against a small cockpit made of the reference
-// host: once with areas and once without, for both example modules. So the test a generated
+// host: once with areas and once without, for all three example modules. So the test a generated
 // cockpit runs is proven to pass for a cockpit which keeps the contract. Run `npm run
 // build:examples` and `npm run build:conformance` before; `npm run test:browser` does both.
 
@@ -23,6 +23,7 @@ before(async () => {
     folders: {
       '/wm/react-module/': join(conformance, 'wm', 'react-module'),
       '/wm/vue-module/': join(conformance, 'wm', 'vue-module'),
+      '/wm/angular-module/': join(conformance, 'wm', 'angular-module'),
     },
   });
 });
@@ -51,7 +52,7 @@ function runConformance(env) {
 }
 
 describe('the conformance test for a generated cockpit', () => {
-  it('passes for a cockpit with areas and for one without, in React and in Vue', async () => {
+  it('passes for a cockpit with areas and for one without, in React, Vue and Angular', async () => {
     const result = await runConformance({
       BC_COCKPIT_URL: server.url,
       BC_USER_TASK_PAGES: [
@@ -59,12 +60,14 @@ describe('the conformance test for a generated cockpit', () => {
         'react-module=/?module=react-module',
         'vue-module=/?module=vue-module&areas=body,information,actions',
         'vue-module=/?module=vue-module&refuse',
+        'angular-module=/?module=angular-module&areas=body,actions',
+        'angular-module=/?module=angular-module',
       ].join(' '),
     });
     assert.equal(result.status, 0, result.output);
     assert.equal(result.fail, 0, result.output);
-    // One check of the pages, and six checks for each of the four pages.
-    assert.equal(result.pass, 1 + 4 * 6, result.output);
+    // One check of the pages, and six checks for each of the six pages.
+    assert.equal(result.pass, 1 + 6 * 6, result.output);
     assert.match(result.output, /shown as the area all/);
     assert.match(result.output, /shown as the areas of the page/);
   });

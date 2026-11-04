@@ -23,6 +23,7 @@ tests against this kit loads in every cockpit generated with that skill.
 1. [The minimum and what an organisation adds](#the-minimum-and-what-an-organisation-adds)
 1. [The kit](#the-kit)
 1. [Checking a module's build](#checking-a-modules-build)
+1. [An Angular module](#an-angular-module)
 1. [The host](#the-host)
 1. [Testing a generated cockpit](#testing-a-generated-cockpit)
 1. [Building and testing this repository](#building-and-testing-this-repository)
@@ -90,7 +91,8 @@ npm install --save-dev @vanillabp/bc-module-kit
 
 A module has two kinds of entries. A data entry is minimal JavaScript without a framework. It tells
 the cockpit something, for example which form a user task gets. A visual entry defines the web
-components which draw the form, in whatever framework the module uses.
+components which draw the form, in whatever framework the module uses. The examples in this
+repository use React, Vue and Angular.
 
 A data entry names the web components as strings and imports no form:
 
@@ -187,8 +189,8 @@ const manifest = createManifest({
 writeFileSync('dist/bc-manifest.json', JSON.stringify(manifest, null, 2));
 ```
 
-[`examples/build-module.mjs`](./examples/build-module.mjs) does this with esbuild, for both example
-modules.
+[`examples/build-module.mjs`](./examples/build-module.mjs) does this with esbuild, for all three
+example modules.
 
 ## Checking a module's build
 
@@ -210,6 +212,36 @@ It fails the build when
 A module with data entries of its own, for example `Header`, names them with `--data-entry <name>`,
 once per entry. Visual entries are only checked for their file. They may be as large as their framework
 makes them.
+
+## An Angular module
+
+[`examples/angular-module`](./examples/angular-module) is the same module as the React and the Vue
+example, written in Angular 22. Its components are standalone components with signals. The module
+starts one Angular application for all of its web components, without zone.js: signals and the
+events of a template tell Angular when to draw again.
+
+Each web component is defined with `defineBcElement`, as in the other examples. A small helper,
+[`angular-element.ts`](./examples/angular-module/src/angular-element.ts), creates the component in
+the shadow root with `createComponent` and hands it all properties of the cockpit as one input,
+`props`. We did not use `@angular/elements`. It defines a web component class of its own, so the
+module would have to build the event protocol a second time: the functions in the properties, the
+end of all subscriptions and the `DISCONNECTED` answers when the web component leaves the page.
+With `defineBcElement` an Angular module behaves exactly like the other two.
+
+Angular puts the styles of a component into the head of the page, and from there they do not reach
+into a shadow root. So the helper writes the module's style into the shadow root itself.
+
+The build has two steps more than the other examples, both from Angular's own compiler
+(`@angular/compiler-cli`):
+
+1. The Angular compiler compiles the components ahead of time into plain JavaScript. The browser
+   gets no template compiler.
+1. Angular publishes its own packages half compiled. The Angular linker finishes them while esbuild
+   bundles. The Angular CLI does the same.
+
+The data entries are plain JavaScript and skip both steps, so `bc-check-entries` finds no Angular in
+them. See [`build.mjs`](./examples/angular-module/build.mjs). Your module may build with the Angular
+CLI instead, as long as the build writes one ES module per entry and `bc-manifest.json` next to them.
 
 ## The host
 
@@ -261,28 +293,29 @@ applies, the web component.
 
 ## Testing a generated cockpit
 
-The skill checks a generated cockpit with the two example modules of this repository: a module
+The skill checks a generated cockpit with the three example modules of this repository: a module
 built against the kit loads in your cockpit. `npm run build:examples` and then
 `npm run build:conformance` write a folder `dist/conformance`, which works on its own:
 
-| File                                 | What it is |
-|--------------------------------------|------------|
-| `wm/react-module/`, `wm/vue-module/` | the built example modules, each with its `bc-manifest.json` |
-| `serve.mjs`                          | a small web server for `wm/`; it prints the address of each module |
-| `cockpit.test.js`                    | the browser test, with Playwright and the test runner of Node.js |
-| `package.json`                       | its one dependency, `playwright` |
+| File                                                       | What it is |
+|------------------------------------------------------------|------------|
+| `wm/react-module/`, `wm/vue-module/`, `wm/angular-module/` | the built example modules, each with its `bc-manifest.json` |
+| `serve.mjs`                                                | a small web server for `wm/`; it prints the address of each module |
+| `cockpit.test.js`                                          | the browser test, with Playwright and the test runner of Node.js |
+| `package.json`                                             | its one dependency, `playwright` |
 
 To run it against your cockpit:
 
 1. `npm install` and `npx playwright install chromium` in the folder, then `node serve.mjs`.
-1. Register `react-module` and `vue-module` in your cockpit with the addresses `serve.mjs` printed.
+1. Register `react-module`, `vue-module` and `angular-module` in your cockpit with the addresses
+   `serve.mjs` printed.
 1. Create a user task of each module with `bpmnProcessId` `TaxiRide` and `taskDefinition`
    `confirmRide`.
-1. Run the test with the address of your cockpit and the pages of the two user tasks:
+1. Run the test with the address of your cockpit and the pages of the three user tasks:
 
    ```bash
    BC_COCKPIT_URL=http://localhost:8080 \
-   BC_USER_TASK_PAGES="react-module=/tasks/4711 vue-module=/tasks/4712" \
+   BC_USER_TASK_PAGES="react-module=/tasks/4711 vue-module=/tasks/4712 angular-module=/tasks/4713" \
    node --test cockpit.test.js
    ```
 
@@ -304,16 +337,16 @@ npx playwright install chromium
 npm test
 ```
 
-`npm test` runs the unit tests with the test runner of Node.js, builds the two example modules and
-runs the browser tests. The browser tests load one example module, written once in React and once in
-Vue, side by side through the host, in Chromium: with areas, without areas, and with and without the
-entry `Header`. Then they run the conformance test against the reference host. To use a Chromium of
+`npm test` runs the unit tests with the test runner of Node.js, builds the three example modules and
+runs the browser tests. The browser tests load one example module, written in React, in Vue and in
+Angular, side by side through the host, in Chromium: with areas, without areas, and with and without
+the entry `Header`. Then they run the conformance test against the reference host. To use a Chromium of
 your own, set `BC_CHROMIUM_PATH`.
 
 | Script                      | What it does |
 |-----------------------------|--------------|
 | `npm run test:unit`         | the unit tests of both packages |
-| `npm run build:examples`    | builds `examples/react-module` and `examples/vue-module` into their `dist` folders and runs `bc-check-entries` on them |
+| `npm run build:examples`    | builds `examples/react-module`, `examples/vue-module` and `examples/angular-module` into their `dist` folders and runs `bc-check-entries` on them |
 | `npm run build:conformance` | writes `dist/conformance` from the built examples |
 | `npm run test:browser`      | builds the examples and the conformance folder and runs the browser tests |
 

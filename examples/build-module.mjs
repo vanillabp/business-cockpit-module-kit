@@ -12,8 +12,10 @@ import { checkEntries } from '@vanillabp/bc-module-kit/check';
  * @param {string} moduleDir the folder of the example module
  * @param {Record<string, string>} entries entry name -> source file, relative to the module
  * @param {string[]} [dataEntries] data entries of the module beyond the four of the kit, for example Header
+ * @param {{ plugins?: import('esbuild').Plugin[], define?: Record<string, string> }} [options] what one
+ *   framework needs on top, for example the Angular linker
  */
-export async function buildModule(moduleDir, entries, dataEntries = []) {
+export async function buildModule(moduleDir, entries, dataEntries = [], { plugins = [], define = {} } = {}) {
   const outdir = resolve(moduleDir, 'dist');
   rmSync(outdir, { recursive: true, force: true });
   mkdirSync(outdir, { recursive: true });
@@ -35,7 +37,9 @@ export async function buildModule(moduleDir, entries, dataEntries = []) {
       __VUE_OPTIONS_API__: 'false',
       __VUE_PROD_DEVTOOLS__: 'false',
       __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: 'false',
+      ...define,
     },
+    plugins,
     logLevel: 'warning',
   });
 

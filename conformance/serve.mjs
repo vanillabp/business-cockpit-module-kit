@@ -1,5 +1,5 @@
 // Serves the example modules of the conformance test below /wm/<id>/, so a cockpit can load them.
-// Register react-module and vue-module in your cockpit with the addresses this prints.
+// Register react-module, vue-module and angular-module in your cockpit with the addresses this prints.
 //
 //   PORT=4173 node serve.mjs
 
@@ -27,5 +27,5 @@ const server = createServer((request, response) => {
 });
 
 server.listen(port, () => {
-  for (const id of ['react-module', 'vue-module']) console.log(`${id}: http://localhost:${port}/wm/${id}`);
+  for (const id of ['react-module', 'vue-module', 'angular-module']) console.log(`${id}: http://localhost:${port}/wm/${id}`);
 });

@@ -1,5 +1,5 @@
-// The browser test: the reference host loads the same example module, once written in React and
-// once in Vue, side by side in Chromium. Run `npm run build:examples` before; `npm run
+// The browser test: the reference host loads the same example module, written in React, in Vue
+// and in Angular, side by side in Chromium. Run `npm run build:examples` before; `npm run
 // test:browser` does both.
 
 import assert from 'node:assert/strict';
@@ -15,6 +15,13 @@ const root = join(import.meta.dirname, '..', '..');
 const examples = join(root, 'examples');
 const hostBundle = join(import.meta.dirname, '.build', 'host.js');
 
+/** The three example modules: module id, the id of its page in index.html and its framework. */
+const MODULES = [
+  { moduleId: 'react-module', name: 'react', framework: 'React' },
+  { moduleId: 'vue-module', name: 'vue', framework: 'Vue' },
+  { moduleId: 'angular-module', name: 'angular', framework: 'Angular' },
+];
+
 const userTask = (id) => ({ id, title: `Confirm ride ${id}`, bpmnProcessId: 'TaxiRide', taskDefinition: 'confirmRide' });
 
 let server;
@@ -27,6 +34,7 @@ before(async () => {
     folders: {
       '/wm/react-module/': join(examples, 'react-module', 'dist'),
       '/wm/vue-module/': join(examples, 'vue-module', 'dist'),
+      '/wm/angular-module/': join(examples, 'angular-module', 'dist'),
     },
     virtual: {
       // A module whose visual entry never defines the web component its data entry names.
@@ -68,28 +76,30 @@ function shadowText(page, pageId, area, testId) {
 }
 
 describe('the reference host in Chromium', () => {
-  it('EXT-034 loading the data entries of both modules fetches no file of their frameworks', async () => {
+  it('EXT-034 loading the data entries of all three modules fetches no file of their frameworks', async () => {
     const { page } = await openPage();
-    const answers = await page.evaluate(async (task) => {
+    const answers = await page.evaluate(async ([task, moduleIds]) => {
       const { host } = window.bcTest;
       const result = {};
-      for (const moduleId of ['react-module', 'vue-module']) {
+      for (const moduleId of moduleIds) {
         result[moduleId] = {
           columns: await host.ask(moduleId, 'UserTaskList', [task]),
           form: await host.ask(moduleId, 'UserTaskForm', [task]),
         };
       }
       return result;
-    }, userTask('1'));
+    }, [userTask('1'), MODULES.map(({ moduleId }) => moduleId)]);
     assert.equal(answers['react-module'].columns[0].path, 'details.customer');
+    assert.equal(answers['angular-module'].columns[0].path, 'details.customer');
     assert.deepEqual(answers['vue-module'].form, {
       entry: 'ConfirmRideForm',
       element: { all: 'vue-module-confirm-ride', body: 'vue-module-confirm-ride-body', actions: 'vue-module-confirm-ride-actions' },
     });
+    assert.deepEqual(answers['angular-module'].form.element.all, 'angular-module-confirm-ride');
 
     const loaded = await page.evaluate(() => performance.getEntriesByType('resource').map(({ name }) => new URL(name).pathname).filter((path) => path.startsWith('/wm/')));
     const scripts = loaded.filter((path) => path.endsWith('.js'));
-    assert.ok(scripts.length >= 4, loaded.join(', '));
+    assert.ok(scripts.length >= 6, loaded.join(', '));
     assert.ok(!scripts.some((path) => path.includes('ConfirmRideForm')), loaded.join(', '));
     for (const path of scripts) {
       const [, , moduleId, ...rest] = path.split('/');
@@ -99,30 +109,31 @@ describe('the reference host in Chromium', () => {
     await page.close();
   });
 
-  it('EXT-029 EXT-005 shows the React and the Vue form side by side, each in its own shadow DOM', async () => {
+  it('EXT-029 EXT-005 shows the React, the Vue and the Angular form side by side, each in its own shadow DOM', async () => {
     const { page, consoleErrors } = await openPage();
-    const areas = await page.evaluate(async ([a, b]) => Promise.all([
-      window.bcTest.show('react-module', a, 'react-page'),
-      window.bcTest.show('vue-module', b, 'vue-page'),
-    ]), [userTask('1'), userTask('2')]);
-    assert.deepEqual(areas, [['body', 'actions'], ['body', 'actions']]);
+    const areas = await page.evaluate(async (shown) => Promise.all(
+      shown.map(([moduleId, task, containerId]) => window.bcTest.show(moduleId, task, containerId)),
+    ), MODULES.map(({ moduleId, name }, index) => [moduleId, userTask(String(index + 1)), `${name}-page`]));
+    assert.deepEqual(areas, [['body', 'actions'], ['body', 'actions'], ['body', 'actions']]);
 
-    assert.equal(await shadowText(page, 'react-page', 'body', 'framework').textContent(), 'React');
-    assert.equal(await shadowText(page, 'vue-page', 'body', 'framework').textContent(), 'Vue');
-    assert.equal(await shadowText(page, 'react-page', 'body', 'title').textContent(), 'Confirm ride 1');
-    assert.equal(await shadowText(page, 'vue-page', 'body', 'title').textContent(), 'Confirm ride 2');
+    for (const [index, { name, framework }] of MODULES.entries()) {
+      assert.equal(await shadowText(page, `${name}-page`, 'body', 'framework').textContent(), framework);
+      assert.equal(await shadowText(page, `${name}-page`, 'body', 'title').textContent(), `Confirm ride ${index + 1}`);
+    }
 
     const shadow = await page.evaluate(() => [...document.querySelectorAll('main [data-bc-area] > *')].map((element) => [element.localName, element.shadowRoot?.mode, element.area]));
-    assert.deepEqual(shadow, [
-      ['react-module-confirm-ride-body', 'open', 'body'],
-      ['react-module-confirm-ride-actions', 'open', 'actions'],
-      ['vue-module-confirm-ride-body', 'open', 'body'],
-      ['vue-module-confirm-ride-actions', 'open', 'actions'],
-    ]);
+    assert.deepEqual(shadow, MODULES.flatMap(({ moduleId }) => [
+      [`${moduleId}-confirm-ride-body`, 'open', 'body'],
+      [`${moduleId}-confirm-ride-actions`, 'open', 'actions'],
+    ]));
     const color = (locator) => locator.evaluate((element) => getComputedStyle(element).color);
-    assert.equal(await color(shadowText(page, 'react-page', 'body', 'framework')), 'rgb(200, 0, 0)');
-    assert.equal(await color(shadowText(page, 'vue-page', 'actions', 'claim')), 'rgb(200, 0, 0)');
+    for (const { name } of MODULES) {
+      assert.equal(await color(shadowText(page, `${name}-page`, 'body', 'framework')), 'rgb(200, 0, 0)');
+      assert.equal(await color(shadowText(page, `${name}-page`, 'actions', 'claim')), 'rgb(200, 0, 0)');
+    }
     assert.equal(await color(page.locator('#outside')), 'rgb(0, 0, 255)');
+    // No module puts a style into the page itself, so nothing can leak out of a shadow DOM.
+    assert.equal(await page.evaluate(() => document.querySelectorAll('style').length), 1);
     assert.deepEqual(consoleErrors, []);
     await page.close();
   });
@@ -141,7 +152,8 @@ describe('the reference host in Chromium', () => {
     await page.close();
   });
 
-  for (const [moduleId, pageId, framework] of [['react-module', 'react-page', 'React'], ['vue-module', 'vue-page', 'Vue']]) {
+  for (const { moduleId, name, framework } of MODULES) {
+    const pageId = `${name}-page`;
     it(`carries a message from body to actions, and claims through the event protocol, in ${framework}`, async () => {
       const { page } = await openPage();
       await page.evaluate(async ([id, task, container]) => window.bcTest.show(id, task, container), [moduleId, userTask('7'), pageId]);
@@ -172,16 +184,16 @@ describe('the reference host in Chromium', () => {
     });
   }
 
-  it('a host without areas shows the web component of all, in React and in Vue', async () => {
+  it('a host without areas shows the web component of all, in React, Vue and Angular', async () => {
     const { page, consoleErrors } = await openPage('');
-    const areas = await page.evaluate(async ([a, b]) => Promise.all([
-      window.bcTest.show('react-module', a, 'react-all'),
-      window.bcTest.show('vue-module', b, 'vue-all'),
-    ]), [userTask('3'), userTask('4')]);
-    assert.deepEqual(areas, [['all'], ['all']]);
-    const shown = await page.evaluate(() => [...document.querySelectorAll('#react-all > *, #vue-all > *')].map((element) => [element.localName, element.shadowRoot?.mode, element.area]));
-    assert.deepEqual(shown, [['react-module-confirm-ride', 'open', 'all'], ['vue-module-confirm-ride', 'open', 'all']]);
-    for (const [pageId, framework] of [['react-all', 'React'], ['vue-all', 'Vue']]) {
+    const areas = await page.evaluate(async (shown) => Promise.all(
+      shown.map(([moduleId, task, containerId]) => window.bcTest.show(moduleId, task, containerId)),
+    ), MODULES.map(({ moduleId, name }, index) => [moduleId, userTask(String(index + 3)), `${name}-all`]));
+    assert.deepEqual(areas, [['all'], ['all'], ['all']]);
+    const shown = await page.evaluate(() => [...document.querySelectorAll('#react-all > *, #vue-all > *, #angular-all > *')].map((element) => [element.localName, element.shadowRoot?.mode, element.area]));
+    assert.deepEqual(shown, MODULES.map(({ moduleId }) => [`${moduleId}-confirm-ride`, 'open', 'all']));
+    for (const { name, framework } of MODULES) {
+      const pageId = `${name}-all`;
       const inForm = (testId) => page.locator(`#${pageId} [data-test="${testId}"]`);
       assert.equal(await inForm('framework').textContent(), framework);
       assert.equal(await inForm('complete').isDisabled(), true);
@@ -196,31 +208,34 @@ describe('the reference host in Chromium', () => {
 
   it('a host with the areas body, information and actions shows body and actions, and ignores all', async () => {
     const { page } = await openPage('?areas=body,information,actions');
-    const areas = await page.evaluate(async (task) => window.bcTest.show('react-module', task, 'react-page'), userTask('5'));
-    assert.deepEqual(areas, ['body', 'actions']);
-    assert.equal(await page.locator('react-module-confirm-ride').count(), 0);
+    for (const { moduleId, name } of MODULES) {
+      const areas = await page.evaluate(async ([id, task, container]) => window.bcTest.show(id, task, container), [moduleId, userTask('5'), `${name}-page`]);
+      assert.deepEqual(areas, ['body', 'actions']);
+      assert.equal(await page.locator(`${moduleId}-confirm-ride`).count(), 0);
+    }
     await page.close();
   });
 
   it('a host which does not know the entry Header ignores it, and a host which knows it shows the buttons', async () => {
     const without = await openPage('');
     const before = server.requests.length;
-    const ignored = await without.page.evaluate(async (task) => [
-      await window.bcTest.showHeader('react-module', 'header'),
-      await window.bcTest.show('react-module', task, 'react-all'),
-    ], userTask('6'));
-    assert.deepEqual(ignored, [undefined, ['all']]);
+    const ignored = await without.page.evaluate(async ([task, shown]) => Promise.all(shown.map(async ([moduleId, containerId]) => [
+      await window.bcTest.showHeader(moduleId, 'header'),
+      await window.bcTest.show(moduleId, task, containerId),
+    ])), [userTask('6'), MODULES.map(({ moduleId, name }) => [moduleId, `${name}-all`])]);
+    assert.deepEqual(ignored, MODULES.map(() => [undefined, ['all']]));
     assert.deepEqual(server.requests.slice(before).filter((path) => /Header/.test(path)), []);
     assert.deepEqual(without.consoleErrors, []);
     await without.page.close();
 
     const withHeader = await openPage('?header');
-    const shown = await withHeader.page.evaluate(async () => Promise.all([
-      window.bcTest.showHeader('react-module', 'header'),
-      window.bcTest.showHeader('vue-module', 'header'),
-    ]));
-    assert.deepEqual(shown, [['react-module-new-ride'], ['vue-module-new-ride']]);
-    assert.deepEqual(await withHeader.page.locator('#header [data-test="new-ride"]').allTextContents(), ['New ride for anna', 'New ride for anna']);
+    const shown = await withHeader.page.evaluate(async (moduleIds) => Promise.all(
+      moduleIds.map((moduleId) => window.bcTest.showHeader(moduleId, 'header')),
+    ), MODULES.map(({ moduleId }) => moduleId));
+    assert.deepEqual(shown, MODULES.map(({ moduleId }) => [`${moduleId}-new-ride`]));
+    const buttons = withHeader.page.locator('#header [data-test="new-ride"]');
+    await buttons.nth(MODULES.length - 1).waitFor({ timeout: 5000 });
+    assert.deepEqual(await buttons.allTextContents(), MODULES.map(() => 'New ride for anna'));
     await withHeader.page.close();
   });
 

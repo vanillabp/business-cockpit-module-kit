@@ -13,7 +13,7 @@ for (const area of areas) {
 }
 
 const host = createModuleHost({
-  modules: [{ id: 'react-module', uri: '/wm/react-module' }, { id: 'vue-module', uri: '/wm/vue-module' }],
+  modules: [{ id: 'react-module', uri: '/wm/react-module' }, { id: 'vue-module', uri: '/wm/vue-module' }, { id: 'angular-module', uri: '/wm/angular-module' }],
   areas,
   properties: { language: 'en', currentUser: { id: 'anna' } },
   actions: {

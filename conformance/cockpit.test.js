@@ -1,16 +1,16 @@
 // The conformance test of a generated cockpit: a module built against the kit loads in your
-// cockpit. It opens the page of a user task of an example module (React and Vue) in your cockpit
-// and works with the form the way a user does. It passes for a cockpit with areas and for one
-// without, because the example modules offer both.
+// cockpit. It opens the page of a user task of an example module (React, Vue and Angular) in your
+// cockpit and works with the form the way a user does. It passes for a cockpit with areas and for
+// one without, because the example modules offer both.
 //
 // Before you run it:
-// 1. Serve the folder wm/ (`node serve.mjs`) and register the workflow modules react-module and
-//    vue-module in your cockpit, with the addresses serve.mjs prints.
+// 1. Serve the folder wm/ (`node serve.mjs`) and register the workflow modules react-module,
+//    vue-module and angular-module in your cockpit, with the addresses serve.mjs prints.
 // 2. Create a user task of each module with bpmnProcessId 'TaxiRide' and taskDefinition
 //    'confirmRide', and find the address of its page in your cockpit.
 // 3. Run it:
 //    BC_COCKPIT_URL=http://localhost:8080 \
-//    BC_USER_TASK_PAGES="react-module=/tasks/4711 vue-module=/tasks/4712" \
+//    BC_USER_TASK_PAGES="react-module=/tasks/4711 vue-module=/tasks/4712 angular-module=/tasks/4713" \
 //    node --test cockpit.test.js
 //
 // BC_STORAGE_STATE names a file with a logged-in session, as Playwright's storageState writes it.
@@ -20,7 +20,7 @@ import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import { chromium } from 'playwright';
 
-const FRAMEWORKS = { 'react-module': 'React', 'vue-module': 'Vue' };
+const FRAMEWORKS = { 'react-module': 'React', 'vue-module': 'Vue', 'angular-module': 'Angular' };
 const cockpitUrl = process.env.BC_COCKPIT_URL;
 const pages = (process.env.BC_USER_TASK_PAGES ?? '').split(/\s+/).filter(Boolean).map((pair) => {
   const at = pair.indexOf('=');
@@ -42,9 +42,9 @@ describe('a module built against the kit loads in your cockpit', { skip: cockpit
   });
 
   it('knows the pages of the user tasks to open', () => {
-    assert.ok(pages.length > 0, 'set BC_USER_TASK_PAGES, for example "react-module=/tasks/4711 vue-module=/tasks/4712"');
+    assert.ok(pages.length > 0, 'set BC_USER_TASK_PAGES, for example "react-module=/tasks/4711 vue-module=/tasks/4712 angular-module=/tasks/4713"');
     for (const { moduleId, path } of pages) {
-      assert.ok(FRAMEWORKS[moduleId], `${moduleId} is no example module; use react-module or vue-module`);
+      assert.ok(FRAMEWORKS[moduleId], `${moduleId} is no example module; use react-module, vue-module or angular-module`);
       assert.ok(path, `${moduleId} has no page; write it like ${moduleId}=/tasks/4711`);
     }
   });
