@@ -19,11 +19,23 @@ tests against this kit loads in every cockpit generated with that skill.
 
 **Contents:**
 
+1. [Who needs this kit](#who-needs-this-kit)
 1. [The kit](#the-kit)
 1. [Checking a module's build](#checking-a-modules-build)
 1. [The host](#the-host)
 1. [Building and testing this repository](#building-and-testing-this-repository)
 1. [License](#license)
+
+## Who needs this kit
+
+The kit exists so that the [VanillaBP blueprints](https://github.com/vanillabp-blueprints) can show a
+workflow module with a user interface, without a generated cockpit. A cockpit generated with the
+skill brings its own types library. That library has the same contract plus what only this cockpit
+knows, for example its own extension points. The module of an organisation builds against the types
+library of its own cockpit, not against this kit.
+
+If you start from a blueprint, replace `@vanillabp/bc-module-kit` by the types library of your
+cockpit once you have one.
 
 ## The kit
 
