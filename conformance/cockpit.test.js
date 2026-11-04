@@ -89,7 +89,7 @@ describe('a module built against the kit loads in your cockpit', { skip: cockpit
         t.diagnostic(`shown as ${shown.area === 'all' ? 'the area all' : 'the areas of the page'}`);
       });
 
-      it('EXT-029 enables Complete once the comment is filled in, also across areas', async () => {
+      it('TF-016 enables Complete once the comment is filled in, also across areas', async () => {
         assert.equal(await inForm('complete').isDisabled(), true);
         await inForm('comment').pressSequentially('ok');
         await page.locator('[data-test="complete"]:not([disabled])').waitFor({ timeout: TIMEOUT });
