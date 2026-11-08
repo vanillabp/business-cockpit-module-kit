@@ -350,6 +350,25 @@ your own, set `BC_CHROMIUM_PATH`.
 | `npm run build:conformance` | writes `dist/conformance` from the built examples |
 | `npm run test:browser`      | builds the examples and the conformance folder and runs the browser tests |
 
+## Publishing
+
+The workflow `Publish` is started by hand and publishes both packages to npmjs.com.
+
+- `snapshot` publishes `<version>-snapshot.<run number>` under the dist-tag `next`. Use it while
+  the blueprints and a generated cockpit try the kit out. A project which wants a snapshot names
+  the exact version; `npm install @vanillabp/bc-module-kit` without a version keeps getting the
+  last release.
+- `release` publishes `<version>` under `latest` and tags the commit as `v<version>`. Afterwards
+  raise the version in both `package.json` files to the next `-SNAPSHOT`.
+
+`<version>` is the version in the `package.json` files without `-SNAPSHOT`. The workflow runs the
+tests first and publishes nothing from a red commit.
+
+There is no npm token. Each package has this repository and `.github/workflows/publish.yaml` as
+its trusted publisher on npmjs.com, so npm trusts the workflow through OpenID Connect and adds a
+provenance statement to each version. npm can only set up a trusted publisher for a package that
+exists, so the very first version of each package was published by hand.
+
 ## License
 
 Copyright 2026 Phactum Softwareentwicklung GmbH
