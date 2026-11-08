@@ -1,8 +1,9 @@
 name: Publish
 
-# Started by hand. 'snapshot' publishes '<version>-snapshot.<run number>' under the
+# Started by hand. Both kinds stage the packages on npmjs.com, a maintainer approves them.
+# 'snapshot' stages '<version>-snapshot.<run number>' under the
 # dist-tag 'next', so 'npm install @vanillabp/bc-module-kit' keeps getting the last
-# release. 'release' publishes '<version>' under 'latest' and tags the commit.
+# release. 'release' stages '<version>' under 'latest' and tags the commit.
 # '<version>' is the version in the package.json files without '-SNAPSHOT'.
 #
 # No token: npm trusts this workflow through OpenID Connect (trusted publishing). Each
@@ -59,9 +60,14 @@ jobs:
             echo "tag=next" >> "$GITHUB_OUTPUT"
           fi
       - run: node bin/set-version.mjs "${{ steps.version.outputs.version }}"
-      # The kit first, because the host depends on it.
-      - run: npm publish --workspace packages/bc-module-kit --access public --tag "${{ steps.version.outputs.tag }}"
-      - run: npm publish --workspace packages/bc-module-host --access public --tag "${{ steps.version.outputs.tag }}"
+      # Staged, not published: a version only becomes public when a maintainer approves it
+      # with 2FA ('npm stage list', then 'npm stage approve <stage-id>'). 'npm stage' does not
+      # know workspaces, so it runs in each package's directory. The kit first, because the
+      # host depends on it; approve them in the same order.
+      - run: npm stage publish --access public --tag "${{ steps.version.outputs.tag }}"
+        working-directory: packages/bc-module-kit
+      - run: npm stage publish --access public --tag "${{ steps.version.outputs.tag }}"
+        working-directory: packages/bc-module-host
       - name: Tag the release
         if: inputs.kind == 'release'
         run: |
