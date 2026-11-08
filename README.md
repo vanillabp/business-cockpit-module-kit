@@ -352,22 +352,33 @@ your own, set `BC_CHROMIUM_PATH`.
 
 ## Publishing
 
-The workflow `Publish` is started by hand and publishes both packages to npmjs.com.
+The workflow `Publish` is started by hand. It stages both packages on npmjs.com, and they become
+public only when a maintainer approves them with two-factor authentication.
 
-- `snapshot` publishes `<version>-snapshot.<run number>` under the dist-tag `next`. Use it while
-  the blueprints and a generated cockpit try the kit out. A project which wants a snapshot names
-  the exact version; `npm install @vanillabp/bc-module-kit` without a version keeps getting the
-  last release.
-- `release` publishes `<version>` under `latest` and tags the commit as `v<version>`. Afterwards
-  raise the version in both `package.json` files to the next `-SNAPSHOT`.
+- `snapshot` stages `<version>-snapshot.<run number>` under the dist-tag `next`. Use it while the
+  blueprints and a generated cockpit try the kit out. A project which wants a snapshot names the
+  exact version; `npm install @vanillabp/bc-module-kit` without a version keeps getting the last
+  release.
+- `release` stages `<version>` under `latest` and tags the commit as `v<version>`. Afterwards raise
+  the version in both `package.json` files to the next `-SNAPSHOT`.
 
 `<version>` is the version in the `package.json` files without `-SNAPSHOT`. The workflow runs the
-tests first and publishes nothing from a red commit.
+tests first and stages nothing from a red commit.
+
+To approve, list what is staged and approve the kit before the host, because the host depends on
+it:
+
+```sh
+npm stage list @vanillabp/bc-module-kit
+npm stage approve <stage-id>
+npm stage list @vanillabp/bc-module-host
+npm stage approve <stage-id>
+```
 
 There is no npm token. Each package has this repository and `.github/workflows/publish.yaml` as
-its trusted publisher on npmjs.com, so npm trusts the workflow through OpenID Connect and adds a
-provenance statement to each version. npm can only set up a trusted publisher for a package that
-exists, so the very first version of each package was published by hand.
+its trusted publisher on npmjs.com, allowed to stage, so npm trusts the workflow through OpenID
+Connect and adds a provenance statement to each version. npm can only set up a trusted publisher
+for a package that exists, so the very first version of each package was published by hand.
 
 ## License
 
