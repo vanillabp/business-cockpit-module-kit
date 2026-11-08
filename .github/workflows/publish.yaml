@@ -1,0 +1,69 @@
+name: Publish
+
+# Started by hand. 'snapshot' publishes '<version>-snapshot.<run number>' under the
+# dist-tag 'next', so 'npm install @vanillabp/bc-module-kit' keeps getting the last
+# release. 'release' publishes '<version>' under 'latest' and tags the commit.
+# '<version>' is the version in the package.json files without '-SNAPSHOT'.
+#
+# No token: npm trusts this workflow through OpenID Connect (trusted publishing). Each
+# package names this repository and this file as its trusted publisher on npmjs.com.
+# npm then also adds a provenance statement to every version.
+"on":
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: What to publish
+        type: choice
+        options:
+          - snapshot
+          - release
+        default: snapshot
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      # 'release' pushes a tag
+      contents: write
+      # trusted publishing to npmjs.com
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      # Trusted publishing needs npm 11.5.1 or later.
+      - run: npm install --global npm@11
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      # Nothing is published which has not passed the tests on this commit.
+      - run: npm test
+      - name: Work out the version
+        id: version
+        run: |
+          base=$(node -p "require('./packages/bc-module-kit/package.json').version.replace(/-SNAPSHOT$/, '')")
+          if [ "${{ inputs.kind }}" = "release" ]; then
+            echo "version=${base}" >> "$GITHUB_OUTPUT"
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${base}-snapshot.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+            echo "tag=next" >> "$GITHUB_OUTPUT"
+          fi
+      - run: node bin/set-version.mjs "${{ steps.version.outputs.version }}"
+      # The kit first, because the host depends on it.
+      - run: npm publish --workspace packages/bc-module-kit --access public --tag "${{ steps.version.outputs.tag }}"
+      - run: npm publish --workspace packages/bc-module-host --access public --tag "${{ steps.version.outputs.tag }}"
+      - name: Tag the release
+        if: inputs.kind == 'release'
+        run: |
+          git tag "v${{ steps.version.outputs.version }}"
+          git push origin "v${{ steps.version.outputs.version }}"
