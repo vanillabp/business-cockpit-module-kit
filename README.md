@@ -163,12 +163,34 @@ What else the kit exports:
 | Export                                                                                                                            | What it is |
 |-----------------------------------------------------------------------------------------------------------------------------------|------------|
 | `USER_TASK_LIST`, `WORKFLOW_LIST`, `USER_TASK_FORM`, `WORKFLOW_PAGE`                                                              | the names of the four data entries every cockpit knows |
-| `DATA_ENTRIES`, `EXPORT_NAMES`                                                                                                    | these four, and the name of the function each one exports |
+| `EXPORT_NAMES`, `DATA_ENTRIES`                                                                                                    | the name of the function each of these four exports, and the four names, which are the keys of `EXPORT_NAMES` |
 | `AREA_ALL`                                                                                                                        | the area `all`, which every cockpit knows |
 | `readManifest`, `checkManifest`, `createManifest`, `entryUrl`                                                                     | reading, checking and writing `bc-manifest.json` |
 | `REQUEST_EVENT`, `RESPONSE_EVENT`, `MESSAGE_EVENT`, `ACTIONS`, `ERROR_CODES`                                                      | the names of the event protocol |
 | `requestFromCockpit`, `toBcUserTask`, `toBcWorkflow`, `sendTo`, `receiveMessage`, `showNotification`, `openDialog`, `closeDialog` | the event protocol without `defineBcElement` |
 | `elementPrefix`, `createElementNames`                                                                                             | the names of the web components, see [below](#the-names-of-the-web-components) |
+
+`EXPORT_NAMES` is the one source of the data entries. Every entry which exports a function is a data
+entry, and a visual entry exports no function. `DATA_ENTRIES` is derived from it: its keys, in the
+same order. A cockpit with more entries, like `Header` or `Pages`, extends the map in its own types
+library and does not change the kit:
+
+```js
+import { EXPORT_NAMES as KIT_EXPORT_NAMES } from '@vanillabp/bc-module-kit';
+
+export const HEADER = 'Header';
+export const PAGES = 'Pages';
+
+export const EXPORT_NAMES = Object.freeze({
+  ...KIT_EXPORT_NAMES,
+  [HEADER]: 'header',
+  [PAGES]: 'pages',
+});
+export const DATA_ENTRIES = Object.freeze(Object.keys(EXPORT_NAMES));
+```
+
+A module which uses such an entry names it with `--data-entry` in `bc-check-entries`, and a test
+page hands the extra entries to the host with `entries`, for example `entries: { Header: 'header' }`.
 
 The types are in `src/index.d.ts`. The JSON schema of the manifest is
 `@vanillabp/bc-module-kit/schema/bc-manifest.schema.json`.
@@ -314,8 +336,8 @@ It fails the build when
 - a data entry contains code of a framework, found by the markers React, Vue, Angular, `zone.js` and
   Lit leave in a bundle, and by the inputs of esbuild's metafile when you pass it.
 
-A module with data entries of its own, for example `Header`, names them with `--data-entry <name>`,
-once per entry. Visual entries are only checked for their file. They may be as large as their framework
+The data entries are the keys of `EXPORT_NAMES`. A module with data entries of its own, for example
+`Header`, names them with `--data-entry <name>`, once per entry. Visual entries are only checked for their file. They may be as large as their framework
 makes them.
 
 ## An Angular module
@@ -387,7 +409,8 @@ one after the other.
 By default the host is a cockpit with the minimum only: the four entries of the kit and the area
 `all`. With `areas` it draws the areas it knows and ignores the others. When a module offers none
 of its areas, or the host has none, it draws the web component of `all`. With `entries` it asks
-more data entries, for example `Header`. It does not load an entry it does not know, and
+more data entries. Each one maps the name of the entry to the name of the function it exports, for
+example `{ Header: 'header' }`, the same way `EXPORT_NAMES` does. It does not load an entry it does not know, and
 `host.ask` answers `undefined` for it. So one module can be tested against a cockpit with areas
 and a header and against one with the minimum only.
 

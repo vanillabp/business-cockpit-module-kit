@@ -6,7 +6,7 @@
 
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, resolve, sep } from 'node:path';
-import { DATA_ENTRIES } from './entries.js';
+import { EXPORT_NAMES } from './entries.js';
 import { readManifest } from './manifest.js';
 
 /** The limit of a data entry with every file it imports: 32 KB before compression. */
@@ -125,13 +125,16 @@ function frameworkOfInput(input) {
  * file it imports, must stay below the limit, must import nothing by a bare name, and must hold no
  * framework code.
  *
+ * The data entries are the keys of `EXPORT_NAMES`, together with `options.dataEntries`: the
+ * entries of the module's own, for example `Header`. A visual entry is only checked for its file.
+ *
  * @param {string} manifestPath
  * @param {{ limit?: number | string, dataEntries?: string[], metafile?: string }} [options]
  * @returns {{ problems: string[], dataEntries: Array<{ entry: string, files: string[], bytes: number }> }}
  */
 export function checkEntries(manifestPath, options = {}) {
   const limit = parseLimit(options.limit ?? DEFAULT_LIMIT_BYTES);
-  const dataEntryNames = new Set([...DATA_ENTRIES, ...(options.dataEntries ?? [])]);
+  const dataEntryNames = new Set([...Object.keys(EXPORT_NAMES), ...(options.dataEntries ?? [])]);
   const inputsOf = options.metafile ? readMetafile(resolve(options.metafile)) : () => undefined;
   const base = dirname(resolve(manifestPath));
   const problems = [];

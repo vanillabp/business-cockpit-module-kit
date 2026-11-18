@@ -18,6 +18,12 @@ of them has a bug. Fix both in the same week, and say in the pull request which 
   entries, the area `all`, the manifest, the event protocol, `defineBcElement`, `elementPrefix`,
   `createElementNames` and `bc-check-entries`. `Header`, `Pages` and areas like `body` or `actions`
   differ from one organisation to the next, so they stay out of the kit's constants.
+- `EXPORT_NAMES` in `src/entries.js` is the one source of the data entries: entry -> the name of
+  the function it exports. `DATA_ENTRIES` is its keys and nothing else, and `bc-check-entries` and
+  the host read `EXPORT_NAMES`. A new data entry of the minimum goes into `EXPORT_NAMES` only. A
+  cockpit with more entries, like `Header` or `Pages`, spreads `EXPORT_NAMES` into a map of its own
+  in its types library. A module checks such an entry with `--data-entry`, and the host asks it
+  through its option `entries`, which maps an entry to its export name as well.
 - The names of the web components follow one grammar, in the kit and in the skill:
   `<prefix>-<build id>-<process>--<part>` for a workflow, `<prefix>-<build id>-<process>--<task>--<part>`
   for a user task, `<prefix>-<build id>-<short name>` without `--` for anything else. `--` goes only
