@@ -47,7 +47,7 @@ describe('the names of the web components', () => {
 
   const names = createElementNames('TaxiRide', 'mvaro4w0');
 
-  it('PKG-052 names a user task part after the process, the task definition and the part', () => {
+  it('PKG-053 names a user task part after the process, the task definition and the part', () => {
     assert.equal(names.userTask('TaxiRide', 'assessRisk', 'form'), 'taxi-ride-mvaro4w0-taxi-ride--assess-risk--form');
     assert.equal(names.userTask('TaxiRide', 'confirmRide', 'list-item'), 'taxi-ride-mvaro4w0-taxi-ride--confirm-ride--list-item');
   });
@@ -57,7 +57,7 @@ describe('the names of the web components', () => {
     assert.equal(names.workflow('TaxiRide', 'start-form'), 'taxi-ride-mvaro4w0-taxi-ride--start-form');
   });
 
-  it('PKG-054 takes a custom short name as it is', () => {
+  it('PKG-053 takes a custom short name as it is', () => {
     assert.equal(names.custom('price-chart'), 'taxi-ride-mvaro4w0-price-chart');
     assert.equal(names.custom('confirm'), 'taxi-ride-mvaro4w0-confirm');
   });
@@ -108,7 +108,7 @@ describe('the names of the web components', () => {
     assert.throws(() => names.userTask('TaxiRide', 42, 'form'), /task definition must be a string, but it is 42/);
   });
 
-  it('refuses a part or a custom short name which is not a segment', () => {
+  it('PKG-053 refuses a part or a custom short name which is not a segment', () => {
     for (const value of [undefined, '', 'Form', 'start_form', 'start form', 'start--form', '-form', 'form-', 'formulär']) {
       assert.throws(() => names.workflow('TaxiRide', value), TypeError, `workflow part ${value}`);
       assert.throws(() => names.userTask('TaxiRide', 'assessRisk', value), TypeError, `user task part ${value}`);
