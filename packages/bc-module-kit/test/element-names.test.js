@@ -45,35 +45,102 @@ describe('the names of the web components', () => {
     assert.throws(() => elementPrefix(4711), /must be a string, but it is 4711/);
   });
 
-  it('createElementNames builds the name from the prefix, the build id and the short name', () => {
-    const elementName = createElementNames('taxi-ride', 'mvaro4w0');
-    assert.equal(elementName('assess-risk-form'), 'taxi-ride-mvaro4w0-assess-risk-form');
-    assert.equal(elementName('confirm'), 'taxi-ride-mvaro4w0-confirm');
+  const names = createElementNames('TaxiRide', 'mvaro4w0');
+
+  it('PKG-052 names a user task part after the process, the task definition and the part', () => {
+    assert.equal(names.userTask('TaxiRide', 'assessRisk', 'form'), 'taxi-ride-mvaro4w0-taxi-ride--assess-risk--form');
+    assert.equal(names.userTask('TaxiRide', 'confirmRide', 'list-item'), 'taxi-ride-mvaro4w0-taxi-ride--confirm-ride--list-item');
   });
 
-  it('createElementNames turns the module id into its prefix first', () => {
-    assert.equal(createElementNames('TaxiRide', 'mvaro4w0')('confirm'), 'taxi-ride-mvaro4w0-confirm');
-    assert.equal(createElementNames('4711', 'mvaro4w0')('confirm'), 'wm-4711-mvaro4w0-confirm');
+  it('PKG-053 names a workflow part after the process and the part', () => {
+    assert.equal(names.workflow('TaxiRide', 'page'), 'taxi-ride-mvaro4w0-taxi-ride--page');
+    assert.equal(names.workflow('TaxiRide', 'start-form'), 'taxi-ride-mvaro4w0-taxi-ride--start-form');
+  });
+
+  it('PKG-054 takes a custom short name as it is', () => {
+    assert.equal(names.custom('price-chart'), 'taxi-ride-mvaro4w0-price-chart');
+    assert.equal(names.custom('confirm'), 'taxi-ride-mvaro4w0-confirm');
+  });
+
+  it('returns a frozen plain object, not a function', () => {
+    assert.equal(typeof names, 'object');
+    assert.ok(Object.isFrozen(names));
+    assert.deepEqual(Object.keys(names).sort(), ['custom', 'userTask', 'workflow']);
+  });
+
+  it('puts -- between two segments, so a workflow has one, a user task two and a custom name none', () => {
+    const shortName = (name) => name.slice('taxi-ride-mvaro4w0-'.length);
+    assert.deepEqual(shortName(names.workflow('TaxiRide', 'start-form')).split('--'), ['taxi-ride', 'start-form']);
+    assert.deepEqual(shortName(names.userTask('TaxiRide', 'assessRisk', 'form')).split('--'), ['taxi-ride', 'assess-risk', 'form']);
+    assert.deepEqual(shortName(names.custom('assess-risk-form')).split('--'), ['assess-risk-form']);
+  });
+
+  it('gives different names where a single hyphen would make them equal', () => {
+    const all = [
+      names.userTask('TaxiRide', 'assessRisk', 'form'),
+      names.userTask('TaxiRide', 'assess', 'risk-form'),
+      names.workflow('TaxiRide', 'assess-risk-form'),
+      names.workflow('Taxi', 'ride-assess-risk-form'),
+      names.userTask('Taxi', 'rideAssess', 'risk-form'),
+      names.custom('taxi-ride-assess-risk-form'),
+    ];
+    assert.equal(new Set(all).size, all.length, all.join('\n'));
+  });
+
+  it('turns the BPMN ids into segments by the rules of the prefix and joins runs of hyphens', () => {
+    assert.equal(names.workflow('taxi-ride', 'page'), 'taxi-ride-mvaro4w0-taxi-ride--page');
+    assert.equal(names.workflow('Process_1x2y3z', 'page'), 'taxi-ride-mvaro4w0-process-1x2y3z--page');
+    assert.equal(names.workflow('taxi--ride', 'page'), 'taxi-ride-mvaro4w0-taxi-ride--page');
+    assert.equal(names.workflow('-_TaxiRide_-', 'page'), 'taxi-ride-mvaro4w0-taxi-ride--page');
+    assert.equal(names.userTask('TaxiRide', 'XMLImport', 'form'), 'taxi-ride-mvaro4w0-taxi-ride--xmlimport--form');
+    assert.equal(names.userTask('TaxiRide', '4711', 'form'), 'taxi-ride-mvaro4w0-taxi-ride--4711--form');
+  });
+
+  it('gives the same name for two BPMN ids which differ only in characters that become a hyphen', () => {
+    assert.equal(names.userTask('TaxiRide', 'assess_risk', 'form'), names.userTask('TaxiRide', 'assessRisk', 'form'));
+    assert.equal(names.userTask('taxi_ride', 'assess-risk', 'form'), names.userTask('TaxiRide', 'assessRisk', 'form'));
+  });
+
+  it('refuses a BPMN id which is not a string or has no letter and no digit, and names it', () => {
+    assert.throws(() => names.workflow(undefined, 'page'), /BPMN process id must be a string/);
+    assert.throws(() => names.workflow('___', 'page'), /BPMN process id "___" has no letter and no digit/);
+    assert.throws(() => names.userTask('TaxiRide', '', 'form'), /task definition "" has no letter and no digit/);
+    assert.throws(() => names.userTask('TaxiRide', 42, 'form'), /task definition must be a string, but it is 42/);
+  });
+
+  it('refuses a part or a custom short name which is not a segment', () => {
+    for (const value of [undefined, '', 'Form', 'start_form', 'start form', 'start--form', '-form', 'form-', 'formulär']) {
+      assert.throws(() => names.workflow('TaxiRide', value), TypeError, `workflow part ${value}`);
+      assert.throws(() => names.userTask('TaxiRide', 'assessRisk', value), TypeError, `user task part ${value}`);
+      assert.throws(() => names.custom(value), TypeError, `custom ${value}`);
+    }
+  });
+
+  it('turns the module id into its prefix first', () => {
+    assert.equal(createElementNames('taxi-ride', 'mvaro4w0').custom('confirm'), 'taxi-ride-mvaro4w0-confirm');
+    assert.equal(createElementNames('4711', 'mvaro4w0').workflow('TaxiRide', 'page'), 'wm-4711-mvaro4w0-taxi-ride--page');
   });
 
   it('gives two builds of one module different names', () => {
     const before = createElementNames('taxi-ride', 'mvaro4w0');
     const after = createElementNames('taxi-ride', 'mvaro4w1');
-    assert.notEqual(before('confirm'), after('confirm'));
+    assert.notEqual(before.userTask('TaxiRide', 'assessRisk', 'form'), after.userTask('TaxiRide', 'assessRisk', 'form'));
+    assert.notEqual(before.workflow('TaxiRide', 'page'), after.workflow('TaxiRide', 'page'));
+    assert.notEqual(before.custom('confirm'), after.custom('confirm'));
   });
 
   it('gives two modules with the same prefix different names as long as their builds differ', () => {
-    assert.notEqual(createElementNames('TaxiRide', 'a1')('confirm'), createElementNames('taxi-ride', 'a2')('confirm'));
+    assert.notEqual(createElementNames('TaxiRide', 'a1').custom('confirm'), createElementNames('taxi-ride', 'a2').custom('confirm'));
   });
 
   it('accepts the build id of the skill, the time of the build in base 36', () => {
     const buildId = Date.parse('2026-10-16T09:30:00Z').toString(36);
     assert.equal(buildId, 'mvaro4w0');
-    assert.equal(createElementNames('taxi-ride', buildId)('x'), 'taxi-ride-mvaro4w0-x');
+    assert.equal(createElementNames('taxi-ride', buildId).custom('x'), 'taxi-ride-mvaro4w0-x');
   });
 
   it('gives a valid name of a custom element', () => {
-    const name = createElementNames('Loan_Approval.2', 'mvaro4w0')('assess-risk-form');
+    const name = createElementNames('Loan_Approval.2', 'mvaro4w0').userTask('Loan_Approval', 'assessRisk', 'form');
     assert.match(name, /^[a-z][a-z0-9-]*-[a-z0-9-]*$/);
   });
 
@@ -83,14 +150,7 @@ describe('the names of the web components', () => {
     }
   });
 
-  it('refuses a short name which is not lower case letters, digits and hyphens', () => {
-    const elementName = createElementNames('taxi-ride', 'mvaro4w0');
-    for (const shortName of [undefined, '', 'AssessRisk', 'assess_risk', 'assess risk', 'formulär']) {
-      assert.throws(() => elementName(shortName), TypeError, String(shortName));
-    }
-  });
-
   it('refuses a name which is reserved in HTML', () => {
-    assert.throws(() => createElementNames('font', 'face')('src'), /reserved name/);
+    assert.throws(() => createElementNames('font', 'face').custom('src'), /reserved name/);
   });
 });

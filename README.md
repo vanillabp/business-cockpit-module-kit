@@ -179,8 +179,8 @@ All modules define their web components in the one `customElements` registry of 
 name has three parts:
 
 ```text
-taxi-ride-mvaro4w0-assess-risk-form
-└ prefix ┘└ build ┘└ short name ──┘
+taxi-ride-mvaro4w0-taxi-ride--assess-risk--form
+└ prefix ┘└ build ┘└ short name ────────────┘
 ```
 
 - The prefix comes from the module id and keeps the modules apart. The cockpit refuses a name which
@@ -189,10 +189,17 @@ taxi-ride-mvaro4w0-assess-risk-form
   define a name only once per page, and `import()` keeps a file per address until the page is
   reloaded. With new names a new build of the module loads while the user has the cockpit open.
   A name without a build id still works, but after a new build the user has to reload the page.
-- The short name is the module's choice. It has only lower case letters, digits and hyphens.
+- The short name holds the BPMN ids of the workflow or the user task, so it is unique within the
+  module.
 
 `elementPrefix(workflowModuleId)` turns a module id into the prefix. The cockpit uses the same rules
 to check the names:
+
+1. A hyphen goes between a lower case letter or a digit and an upper case letter after it.
+2. Every letter becomes lower case.
+3. Each run of characters other than `a` to `z`, `0` to `9` and `-` becomes one hyphen. Hyphens at
+   the start and at the end are removed.
+4. If the result is empty or does not start with a letter, `wm-` goes in front of it.
 
 |     Module id     |      Prefix       |
 |-------------------|-------------------|
@@ -201,21 +208,50 @@ to check the names:
 | `loan_approval.2` | `loan-approval-2` |
 | `4711`            | `wm-4711`         |
 
-`createElementNames(workflowModuleId, buildId)` returns a function which turns a short name into the
-whole name. Call it once, in a small file of plain JavaScript which the data entries and the visual
-entries import:
+`createElementNames(workflowModuleId, buildId)` returns an object with three functions. Each one
+returns a whole name:
+
+|                     Call                     |                        Name                       |
+|----------------------------------------------|---------------------------------------------------|
+| `userTask('TaxiRide', 'assessRisk', 'form')` | `taxi-ride-mvaro4w0-taxi-ride--assess-risk--form` |
+| `workflow('TaxiRide', 'page')`               | `taxi-ride-mvaro4w0-taxi-ride--page`              |
+| `custom('price-chart')`                      | `taxi-ride-mvaro4w0-price-chart`                  |
+
+The short name is made of segments. A segment has lower case letters and digits, with one hyphen
+between two words. It never has `--` and never starts or ends with a hyphen. Two hyphens, `--`, go
+between two segments:
+
+- `workflow(bpmnProcessId, part)` gives `<process>--<part>`, one `--`.
+- `userTask(bpmnProcessId, taskDefinition, part)` gives `<process>--<task>--<part>`, two `--`.
+- `custom(shortName)` gives the short name as it is, no `--`. Use it for anything which is not
+  the part of one workflow or one user task.
+
+So the short name, split at `--`, gives back the process, the task and the part. Two different
+processes, tasks or parts never get the same name. With a single hyphen they could:
+`assessRisk` + `form` and `assess` + `risk-form` would both give `assess-risk-form`.
+
+The BPMN process id and the task definition become segments by the rules of the prefix, with two
+changes. In step 3 a run of hyphens becomes one hyphen as well. And step 4 does not apply: an id
+which has no letter and no digit is refused with a `TypeError`. The part and the custom short name
+are not changed. They must be segments already, or the call throws a `TypeError`.
+
+Two BPMN ids which differ only in case or in characters which become a hyphen give the same name.
+`assess_risk` and `assessRisk` both give `assess-risk`. If a module has both, `defineBcElement`
+throws for the second one, because its name is defined already. Give one of them another id.
+
+Call `createElementNames` once, in a small file of plain JavaScript which the data entries and the
+visual entries import:
 
 ```js
 // src/element-names.js
 import { createElementNames } from '@vanillabp/bc-module-kit';
 import { WORKFLOW_MODULE_ID, BUILD_ID } from './bc-build.js';
 
-export const elementName = createElementNames(WORKFLOW_MODULE_ID, BUILD_ID);
-// elementName('assess-risk-form') === 'taxi-ride-mvaro4w0-assess-risk-form'
+export const names = createElementNames(WORKFLOW_MODULE_ID, BUILD_ID);
 ```
 
-The data entry returns `elementName('confirm-ride')`, and the visual entry calls
-`defineBcElement(elementName('confirm-ride'), { mount, update, unmount })`.
+The data entry returns `names.userTask('TaxiRide', 'confirmRide', 'form')`, and the visual entry
+calls `defineBcElement(names.userTask('TaxiRide', 'confirmRide', 'form'), { mount, update, unmount })`.
 
 The build script writes `bc-build.js` before it starts the bundler:
 

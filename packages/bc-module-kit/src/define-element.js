@@ -28,7 +28,7 @@ export function defineBcElement(name, { mount, update, unmount }, options = {}) 
     throw new Error('defineBcElement needs a browser: customElements does not exist here');
   }
   if (customElements.get(name)) {
-    throw new Error(`The web component "${name}" is defined already. Build its name with createElementNames, so it holds the prefix of the module and the build id.`);
+    throw new Error(`The web component "${name}" is defined already. Build its name with createElementNames, so it holds the prefix of the module and the build id. Two BPMN ids which differ only in case or in characters like _ or . give the same name, so give one of them another id.`);
   }
   const properties = [...HOST_PROPERTIES, ...(options.properties ?? [])];
 
