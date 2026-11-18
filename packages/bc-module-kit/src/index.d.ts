@@ -221,3 +221,13 @@ export interface BcElementFunctions {
 
 export declare const HOST_PROPERTIES: readonly string[];
 export declare function defineBcElement(name: string, functions: BcElementFunctions, options?: { properties?: string[] }): CustomElementConstructor;
+
+// --- names of the web components -------------------------------------------------------------
+
+/** Turns a module id into the prefix of its web components: `TaxiRide` gives `taxi-ride`, `4711` gives `wm-4711`. */
+export declare function elementPrefix(workflowModuleId: string): string;
+/**
+ * Returns a function from a short name to the whole name of a web component,
+ * `<prefix>-<build id>-<short name>`. The build id has only lower case letters and digits.
+ */
+export declare function createElementNames(workflowModuleId: string, buildId: string): (shortName: string) => string;

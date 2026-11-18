@@ -10,7 +10,7 @@ two npm packages:
 
 | Package                     | What it is |
 |-----------------------------|------------|
-| `@vanillabp/bc-module-kit`  | The module's side of the contract: `bc-manifest.json`, `bc-check-entries`, the event protocol, `defineBcElement` and the names of the entries. Plain JavaScript, no dependencies. |
+| `@vanillabp/bc-module-kit`  | The module's side of the contract: `bc-manifest.json`, `bc-check-entries`, the event protocol, `defineBcElement`, the names of the entries and the names of the web components. Plain JavaScript, no dependencies. |
 | `@vanillabp/bc-module-host` | A minimal host which loads the parts of a module the way a cockpit does. For the tests of a module, not for production. |
 
 The contract is described in the skill `business-cockpit-user-interface` of the `business-cockpit`
@@ -48,7 +48,9 @@ against the kit loads in every cockpit:
 - the four data entries `UserTaskList`, `WorkflowList`, `UserTaskForm` and `WorkflowPage`, and the
   name of the function each one exports,
 - the area `all`: the one web component which shows the whole page of a user task or a case,
-- `bc-manifest.json`, the event protocol, `defineBcElement` and `bc-check-entries`.
+- `bc-manifest.json`, the event protocol, `defineBcElement` and `bc-check-entries`,
+- `elementPrefix` and `createElementNames`, which build the names of the web components. The
+  cockpit refuses a name which does not start with the prefix of its module.
 
 Everything else differs from one organisation to the next. The skill asks about it when it
 generates the cockpit, and the types library of that cockpit names it:
@@ -166,9 +168,76 @@ What else the kit exports:
 | `readManifest`, `checkManifest`, `createManifest`, `entryUrl`                                                                     | reading, checking and writing `bc-manifest.json` |
 | `REQUEST_EVENT`, `RESPONSE_EVENT`, `MESSAGE_EVENT`, `ACTIONS`, `ERROR_CODES`                                                      | the names of the event protocol |
 | `requestFromCockpit`, `toBcUserTask`, `toBcWorkflow`, `sendTo`, `receiveMessage`, `showNotification`, `openDialog`, `closeDialog` | the event protocol without `defineBcElement` |
+| `elementPrefix`, `createElementNames`                                                                                             | the names of the web components, see [below](#the-names-of-the-web-components) |
 
 The types are in `src/index.d.ts`. The JSON schema of the manifest is
 `@vanillabp/bc-module-kit/schema/bc-manifest.schema.json`.
+
+### The names of the web components
+
+All modules define their web components in the one `customElements` registry of the page. So every
+name has three parts:
+
+```text
+taxi-ride-mvaro4w0-assess-risk-form
+└ prefix ┘└ build ┘└ short name ──┘
+```
+
+- The prefix comes from the module id and keeps the modules apart. The cockpit refuses a name which
+  does not start with the prefix of its module and a hyphen.
+- The build id is new for every build and keeps the builds of one module apart. The browser can
+  define a name only once per page, and `import()` keeps a file per address until the page is
+  reloaded. With new names a new build of the module loads while the user has the cockpit open.
+  A name without a build id still works, but after a new build the user has to reload the page.
+- The short name is the module's choice. It has only lower case letters, digits and hyphens.
+
+`elementPrefix(workflowModuleId)` turns a module id into the prefix. The cockpit uses the same rules
+to check the names:
+
+|     Module id     |      Prefix       |
+|-------------------|-------------------|
+| `taxi-ride`       | `taxi-ride`       |
+| `TaxiRide`        | `taxi-ride`       |
+| `loan_approval.2` | `loan-approval-2` |
+| `4711`            | `wm-4711`         |
+
+`createElementNames(workflowModuleId, buildId)` returns a function which turns a short name into the
+whole name. Call it once, in a small file of plain JavaScript which the data entries and the visual
+entries import:
+
+```js
+// src/element-names.js
+import { createElementNames } from '@vanillabp/bc-module-kit';
+import { WORKFLOW_MODULE_ID, BUILD_ID } from './bc-build.js';
+
+export const elementName = createElementNames(WORKFLOW_MODULE_ID, BUILD_ID);
+// elementName('assess-risk-form') === 'taxi-ride-mvaro4w0-assess-risk-form'
+```
+
+The data entry returns `elementName('confirm-ride')`, and the visual entry calls
+`defineBcElement(elementName('confirm-ride'), { mount, update, unmount })`.
+
+The build script writes `bc-build.js` before it starts the bundler:
+
+```js
+import { writeFileSync } from 'node:fs';
+
+const buildTime = Date.now();
+writeFileSync('src/bc-build.js', [
+  `export const WORKFLOW_MODULE_ID = 'taxi-ride';`,
+  `export const BUILD_ID = '${buildTime.toString(36)}';`,
+  '',
+].join('\n'));
+```
+
+- `WORKFLOW_MODULE_ID` is the id the module registers with at the cockpit. Take it from the module's
+  own configuration, for example a field in its `package.json`. If it differs from the id of the
+  registration, the cockpit refuses every name of the module.
+- `BUILD_ID` is the time of the build in milliseconds, written in base 36. It has only lower case
+  letters and digits. Pass the same time to `createManifest` as `buildTimestamp`, so the manifest and
+  the names speak of one build.
+
+The example modules in this repository still write their names by hand, without a build id.
 
 ### The manifest
 

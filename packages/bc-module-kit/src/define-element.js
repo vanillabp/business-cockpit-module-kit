@@ -17,7 +17,8 @@ export const HOST_PROPERTIES = Object.freeze(['userTask', 'workflow', 'area', 'l
  * `unmount`, stops every subscription the part made and rejects every open request with
  * `DISCONNECTED`.
  *
- * @param {string} name the name of the web component; by convention it starts with the module id
+ * @param {string} name the name of the web component; build it with `createElementNames`, so it starts
+ *   with the prefix of the module and holds the build id
  * @param {import('./index.js').BcElementFunctions} functions
  * @param {{ properties?: string[] }} [options] further properties an extension point of this cockpit sets
  * @returns {CustomElementConstructor}
@@ -27,7 +28,7 @@ export function defineBcElement(name, { mount, update, unmount }, options = {}) 
     throw new Error('defineBcElement needs a browser: customElements does not exist here');
   }
   if (customElements.get(name)) {
-    throw new Error(`The web component "${name}" is defined already. Its name must start with the module id, so it is unique.`);
+    throw new Error(`The web component "${name}" is defined already. Build its name with createElementNames, so it holds the prefix of the module and the build id.`);
   }
   const properties = [...HOST_PROPERTIES, ...(options.properties ?? [])];
 
