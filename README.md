@@ -10,7 +10,7 @@ two npm packages:
 
 | Package                     | What it is |
 |-----------------------------|------------|
-| `@vanillabp/bc-module-kit`  | The module's side of the contract: `bc-manifest.json`, `bc-check-entries`, the event protocol, `defineBcElement` and the names of the entries. Plain JavaScript, no dependencies. |
+| `@vanillabp/bc-module-kit`  | The module's side of the contract: `bc-manifest.json`, `bc-check-entries`, the event protocol, `defineBcElement`, the names of the entries and the names of the web components. Plain JavaScript, no dependencies. |
 | `@vanillabp/bc-module-host` | A minimal host which loads the parts of a module the way a cockpit does. For the tests of a module, not for production. |
 
 The contract is described in the skill `business-cockpit-user-interface` of the `business-cockpit`
@@ -48,7 +48,9 @@ against the kit loads in every cockpit:
 - the four data entries `UserTaskList`, `WorkflowList`, `UserTaskForm` and `WorkflowPage`, and the
   name of the function each one exports,
 - the area `all`: the one web component which shows the whole page of a user task or a case,
-- `bc-manifest.json`, the event protocol, `defineBcElement` and `bc-check-entries`.
+- `bc-manifest.json`, the event protocol, `defineBcElement` and `bc-check-entries`,
+- `elementPrefix` and `createElementNames`, which build the names of the web components. The
+  cockpit refuses a name which does not start with the prefix of its module.
 
 Everything else differs from one organisation to the next. The skill asks about it when it
 generates the cockpit, and the types library of that cockpit names it:
@@ -166,9 +168,112 @@ What else the kit exports:
 | `readManifest`, `checkManifest`, `createManifest`, `entryUrl`                                                                     | reading, checking and writing `bc-manifest.json` |
 | `REQUEST_EVENT`, `RESPONSE_EVENT`, `MESSAGE_EVENT`, `ACTIONS`, `ERROR_CODES`                                                      | the names of the event protocol |
 | `requestFromCockpit`, `toBcUserTask`, `toBcWorkflow`, `sendTo`, `receiveMessage`, `showNotification`, `openDialog`, `closeDialog` | the event protocol without `defineBcElement` |
+| `elementPrefix`, `createElementNames`                                                                                             | the names of the web components, see [below](#the-names-of-the-web-components) |
 
 The types are in `src/index.d.ts`. The JSON schema of the manifest is
 `@vanillabp/bc-module-kit/schema/bc-manifest.schema.json`.
+
+### The names of the web components
+
+All modules define their web components in the one `customElements` registry of the page. So every
+name has three parts:
+
+```text
+taxi-ride-mvaro4w0-taxi-ride--assess-risk--form
+└ prefix ┘└ build ┘└ short name ────────────┘
+```
+
+- The prefix comes from the module id and keeps the modules apart. The cockpit refuses a name which
+  does not start with the prefix of its module and a hyphen.
+- The build id is new for every build and keeps the builds of one module apart. The browser can
+  define a name only once per page, and `import()` keeps a file per address until the page is
+  reloaded. With new names a new build of the module loads while the user has the cockpit open.
+  A name without a build id still works, but after a new build the user has to reload the page.
+- The short name holds the BPMN ids of the workflow or the user task, so it is unique within the
+  module.
+
+`elementPrefix(workflowModuleId)` turns a module id into the prefix. The cockpit uses the same rules
+to check the names:
+
+1. A hyphen goes between a lower case letter or a digit and an upper case letter after it.
+2. Every letter becomes lower case.
+3. Each run of characters other than `a` to `z`, `0` to `9` and `-` becomes one hyphen. Hyphens at
+   the start and at the end are removed.
+4. If the result is empty or does not start with a letter, `wm-` goes in front of it.
+
+|     Module id     |      Prefix       |
+|-------------------|-------------------|
+| `taxi-ride`       | `taxi-ride`       |
+| `TaxiRide`        | `taxi-ride`       |
+| `loan_approval.2` | `loan-approval-2` |
+| `4711`            | `wm-4711`         |
+
+`createElementNames(workflowModuleId, buildId)` returns an object with three functions. Each one
+returns a whole name:
+
+|                     Call                     |                        Name                       |
+|----------------------------------------------|---------------------------------------------------|
+| `userTask('TaxiRide', 'assessRisk', 'form')` | `taxi-ride-mvaro4w0-taxi-ride--assess-risk--form` |
+| `workflow('TaxiRide', 'page')`               | `taxi-ride-mvaro4w0-taxi-ride--page`              |
+| `custom('price-chart')`                      | `taxi-ride-mvaro4w0-price-chart`                  |
+
+The short name is made of segments. A segment has lower case letters and digits, with one hyphen
+between two words. It never has `--` and never starts or ends with a hyphen. Two hyphens, `--`, go
+between two segments:
+
+- `workflow(bpmnProcessId, part)` gives `<process>--<part>`, one `--`.
+- `userTask(bpmnProcessId, taskDefinition, part)` gives `<process>--<task>--<part>`, two `--`.
+- `custom(shortName)` gives the short name as it is, no `--`. Use it for anything which is not
+  the part of one workflow or one user task.
+
+So the short name, split at `--`, gives back the process, the task and the part. Two different
+processes, tasks or parts never get the same name. With a single hyphen they could:
+`assessRisk` + `form` and `assess` + `risk-form` would both give `assess-risk-form`.
+
+The BPMN process id and the task definition become segments by the rules of the prefix, with two
+changes. In step 3 a run of hyphens becomes one hyphen as well. And step 4 does not apply: an id
+which has no letter and no digit is refused with a `TypeError`. The part and the custom short name
+are not changed. They must be segments already, or the call throws a `TypeError`.
+
+Two BPMN ids which differ only in case or in characters which become a hyphen give the same name.
+`assess_risk` and `assessRisk` both give `assess-risk`. If a module has both, `defineBcElement`
+throws for the second one, because its name is defined already. Give one of them another id.
+
+Call `createElementNames` once, in a small file of plain JavaScript which the data entries and the
+visual entries import:
+
+```js
+// src/element-names.js
+import { createElementNames } from '@vanillabp/bc-module-kit';
+import { WORKFLOW_MODULE_ID, BUILD_ID } from './bc-build.js';
+
+export const names = createElementNames(WORKFLOW_MODULE_ID, BUILD_ID);
+```
+
+The data entry returns `names.userTask('TaxiRide', 'confirmRide', 'form')`, and the visual entry
+calls `defineBcElement(names.userTask('TaxiRide', 'confirmRide', 'form'), { mount, update, unmount })`.
+
+The build script writes `bc-build.js` before it starts the bundler:
+
+```js
+import { writeFileSync } from 'node:fs';
+
+const buildTime = Date.now();
+writeFileSync('src/bc-build.js', [
+  `export const WORKFLOW_MODULE_ID = 'taxi-ride';`,
+  `export const BUILD_ID = '${buildTime.toString(36)}';`,
+  '',
+].join('\n'));
+```
+
+- `WORKFLOW_MODULE_ID` is the id the module registers with at the cockpit. Take it from the module's
+  own configuration, for example a field in its `package.json`. If it differs from the id of the
+  registration, the cockpit refuses every name of the module.
+- `BUILD_ID` is the time of the build in milliseconds, written in base 36. It has only lower case
+  letters and digits. Pass the same time to `createManifest` as `buildTimestamp`, so the manifest and
+  the names speak of one build.
+
+The example modules in this repository still write their names by hand, without a build id.
 
 ### The manifest
 

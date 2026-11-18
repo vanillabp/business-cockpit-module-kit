@@ -11,12 +11,18 @@ The contract itself is described in the skill `business-cockpit-user-interface` 
 of them has a bug. Fix both in the same week, and say in the pull request which one was right.
 
 - `packages/bc-module-kit` holds only what every cockpit shares with every module: the manifest,
-  `bc-check-entries`, the event protocol, `defineBcElement` and the names of the entries. Something
-  only one organisation's cockpit knows, like its `ui-uri-type` values or its own extension points,
-  goes into that cockpit's types library, not here. The kit is the minimum every cockpit keeps:
-  the four data entries, the area `all`, the manifest, the event protocol, `defineBcElement` and
-  `bc-check-entries`. `Header`, `Pages` and areas like `body` or `actions` differ from one
-  organisation to the next, so they stay out of the kit's constants.
+  `bc-check-entries`, the event protocol, `defineBcElement`, the names of the entries and the names
+  of the web components (`elementPrefix`, `createElementNames`). Something only one organisation's
+  cockpit knows, like its `ui-uri-type` values or its own extension points, goes into that
+  cockpit's types library, not here. The kit is the minimum every cockpit keeps: the four data
+  entries, the area `all`, the manifest, the event protocol, `defineBcElement`, `elementPrefix`,
+  `createElementNames` and `bc-check-entries`. `Header`, `Pages` and areas like `body` or `actions`
+  differ from one organisation to the next, so they stay out of the kit's constants.
+- The names of the web components follow one grammar, in the kit and in the skill:
+  `<prefix>-<build id>-<process>--<part>` for a workflow, `<prefix>-<build id>-<process>--<task>--<part>`
+  for a user task, `<prefix>-<build id>-<short name>` without `--` for anything else. `--` goes only
+  between two segments, so a name never stands for two different processes, tasks or parts. Do not
+  change one side without the other.
 - `bc-module-kit` has no dependencies and no peer dependencies (`PKG-006`). The generated types
   library takes it in when it is built, and it must stay without dependencies as well.
 - The files below `packages/bc-module-kit/src` which a browser loads import nothing but each other.

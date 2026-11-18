@@ -221,3 +221,34 @@ export interface BcElementFunctions {
 
 export declare const HOST_PROPERTIES: readonly string[];
 export declare function defineBcElement(name: string, functions: BcElementFunctions, options?: { properties?: string[] }): CustomElementConstructor;
+
+// --- names of the web components -------------------------------------------------------------
+
+/** Turns a module id into the prefix of its web components: `TaxiRide` gives `taxi-ride`, `4711` gives `wm-4711`. */
+export declare function elementPrefix(workflowModuleId: string): string;
+/**
+ * The functions which build the names of a module's web components. Every name is
+ * `<prefix>-<build id>-<short name>`, and `--` goes between two segments of the short name.
+ * A segment is lower case letters and digits with one hyphen between two words.
+ */
+export interface ElementNames {
+  /**
+   * The name of a part which shows a workflow: `<prefix>-<build id>-<process>--<part>`.
+   * `workflow('TaxiRide', 'page')` gives `taxi-ride-mvaro4w0-taxi-ride--page`.
+   */
+  workflow(bpmnProcessId: string, part: string): string;
+  /**
+   * The name of a part which shows a user task: `<prefix>-<build id>-<process>--<task>--<part>`.
+   * `userTask('TaxiRide', 'assessRisk', 'form')` gives `taxi-ride-mvaro4w0-taxi-ride--assess-risk--form`.
+   */
+  userTask(bpmnProcessId: string, taskDefinition: string, part: string): string;
+  /** The name of anything else: `<prefix>-<build id>-<short name>`. The short name has no `--`. */
+  custom(shortName: string): string;
+}
+/**
+ * Returns the functions which build the names of a module's web components. The build id has only
+ * lower case letters and digits. BPMN ids become segments by the rules of `elementPrefix`; a run of
+ * hyphens becomes one hyphen. Two ids which differ only in those characters, like `assess_risk` and
+ * `assessRisk`, give the same name.
+ */
+export declare function createElementNames(workflowModuleId: string, buildId: string): Readonly<ElementNames>;

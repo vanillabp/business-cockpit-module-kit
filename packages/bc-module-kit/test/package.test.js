@@ -16,7 +16,7 @@ describe('the package', () => {
   });
 
   it('PKG-020 the browser part imports nothing but its own files', async () => {
-    for (const file of ['index.js', 'entries.js', 'manifest.js', 'protocol.js', 'define-element.js']) {
+    for (const file of ['index.js', 'entries.js', 'manifest.js', 'protocol.js', 'define-element.js', 'element-names.js']) {
       const source = readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8');
       for (const [, specifier] of source.matchAll(/from '([^']+)'/g)) assert.ok(specifier.startsWith('./'), `${file} imports ${specifier}`);
     }
