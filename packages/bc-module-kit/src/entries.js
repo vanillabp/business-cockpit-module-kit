@@ -20,24 +20,25 @@ export const USER_TASK_FORM = 'UserTaskForm';
 export const WORKFLOW_PAGE = 'WorkflowPage';
 
 /**
- * The entries which carry no framework. `bc-check-entries` checks their size and their content.
- * A module with entries of its own, for example `Header`, names them with the option
- * `--data-entry` of `bc-check-entries`.
+ * For each data entry, the name of the function it exports. This map is the one source of the
+ * data entries: an entry which exports a function is a data entry, and a visual entry exports no
+ * function. A cockpit with entries of its own, for example `Header`, extends this map in its
+ * types library: `{ ...EXPORT_NAMES, Header: 'header' }`.
  */
-export const DATA_ENTRIES = Object.freeze([
-  USER_TASK_LIST,
-  WORKFLOW_LIST,
-  USER_TASK_FORM,
-  WORKFLOW_PAGE,
-]);
-
-/** For each data entry, the name of the function it exports. */
 export const EXPORT_NAMES = Object.freeze({
   [USER_TASK_LIST]: 'userTaskListColumns',
   [WORKFLOW_LIST]: 'workflowListColumns',
   [USER_TASK_FORM]: 'userTaskForm',
   [WORKFLOW_PAGE]: 'workflowPage',
 });
+
+/**
+ * The entries which carry no framework: the keys of `EXPORT_NAMES`, in the same order. It is
+ * derived from that map, so never list a data entry here. `bc-check-entries` checks their size
+ * and their content. A module with entries of its own, for example `Header`, names them with
+ * the option `--data-entry` of `bc-check-entries`.
+ */
+export const DATA_ENTRIES = Object.freeze(Object.keys(EXPORT_NAMES));
 
 /**
  * The area of the one web component which shows the whole page. Every cockpit knows it. A

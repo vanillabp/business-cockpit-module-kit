@@ -9,7 +9,9 @@ const usage = `Usage: bc-check-entries <path to bc-manifest.json> [options]
 
 Fails when an entry of the manifest has no file, or when a data entry, with
 every file it imports, is larger than the limit, imports a bare name or
-contains framework code.
+contains framework code. The data entries are the four the kit knows
+(UserTaskList, WorkflowList, UserTaskForm, WorkflowPage) and those named by
+--data-entry.
 
 Options:
   --limit <size>        the limit of a data entry, like 32kb (default ${DEFAULT_LIMIT_BYTES / 1024}kb)

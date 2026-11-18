@@ -11,13 +11,19 @@ export declare const USER_TASK_LIST: 'UserTaskList';
 export declare const WORKFLOW_LIST: 'WorkflowList';
 export declare const USER_TASK_FORM: 'UserTaskForm';
 export declare const WORKFLOW_PAGE: 'WorkflowPage';
-export declare const DATA_ENTRIES: readonly ['UserTaskList', 'WorkflowList', 'UserTaskForm', 'WorkflowPage'];
+/**
+ * For each data entry, the name of the function it exports. The one source of the data entries.
+ * A cockpit with entries of its own extends it in its types library, for example
+ * `{ ...EXPORT_NAMES, Header: 'header' }`.
+ */
 export declare const EXPORT_NAMES: Readonly<{
   UserTaskList: 'userTaskListColumns';
   WorkflowList: 'workflowListColumns';
   UserTaskForm: 'userTaskForm';
   WorkflowPage: 'workflowPage';
 }>;
+/** The keys of `EXPORT_NAMES`, in the same order. Derived from that map. */
+export declare const DATA_ENTRIES: ReadonlyArray<keyof typeof EXPORT_NAMES>;
 export declare const AREA_ALL: 'all';
 
 /** A text per language. The keys are language codes like 'en' or 'de'. */
