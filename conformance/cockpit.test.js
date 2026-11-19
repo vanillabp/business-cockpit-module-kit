@@ -83,9 +83,9 @@ describe('a module built against the kit loads in your cockpit', { skip: cockpit
           return { mode: root.mode, host: root.host?.localName, area: root.host?.area };
         });
         assert.equal(shown.mode, 'open');
-        assert.ok(shown.host?.startsWith(`${moduleId}-confirm-ride`), `the form is in ${shown.host}`);
-        if (shown.area === 'all') assert.equal(shown.host, `${moduleId}-confirm-ride`);
-        else assert.equal(shown.host, `${moduleId}-confirm-ride-body`);
+        // The names carry the prefix of the module, the id of its build and the BPMN ids.
+        const part = shown.area === 'all' ? 'form' : 'body';
+        assert.match(shown.host ?? '', new RegExp(`^${moduleId}-[a-z0-9]+-taxi-ride--confirm-ride--${part}$`), `the form is in ${shown.host}`);
         t.diagnostic(`shown as ${shown.area === 'all' ? 'the area all' : 'the areas of the page'}`);
       });
 

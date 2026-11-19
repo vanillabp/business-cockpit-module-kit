@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { after, before, describe, it } from 'node:test';
 import { build } from 'esbuild';
 import { chromium } from 'playwright';
@@ -21,6 +22,16 @@ const MODULES = [
   { moduleId: 'vue-module', name: 'vue', framework: 'Vue' },
   { moduleId: 'angular-module', name: 'angular', framework: 'Angular' },
 ];
+
+/**
+ * The names of the web components of each example module, from its src/element-names.js, and the
+ * build id its last build wrote into src/bc-build.js.
+ */
+const NAMES = Object.fromEntries(await Promise.all(MODULES.map(async ({ moduleId }) => {
+  const source = (file) => import(pathToFileURL(join(examples, moduleId, 'src', file)).href);
+  const [{ CONFIRM_RIDE, NEW_RIDE }, { BUILD_ID }] = await Promise.all([source('element-names.js'), source('bc-build.js')]);
+  return [moduleId, { ...CONFIRM_RIDE, newRide: NEW_RIDE, buildId: BUILD_ID }];
+})));
 
 const userTask = (id) => ({ id, title: `Confirm ride ${id}`, bpmnProcessId: 'TaxiRide', taskDefinition: 'confirmRide' });
 
@@ -45,6 +56,10 @@ const RENEWED_BUILDS = {
 };
 
 const virtual = {
+  // A module whose data entry names a web component with the prefix of another module.
+  '/wm/stray-module/bc-manifest.json': JSON.stringify({ manifestVersion: 1, entries: { UserTaskForm: 'form.js', StrayForm: 'stray.js' } }),
+  '/wm/stray-module/form.js': 'export const userTaskForm = () => ({ entry: "StrayForm", element: "react-module-confirm-ride" });',
+  '/wm/stray-module/stray.js': 'customElements.define("react-module-confirm-ride", class extends HTMLElement {});',
   // A module whose visual entry never defines the web component its data entry names.
   '/wm/slow-module/bc-manifest.json': JSON.stringify({ manifestVersion: 1, entries: { UserTaskForm: 'form.js', SlowForm: 'slow.js' } }),
   '/wm/slow-module/form.js': 'export const userTaskForm = () => ({ entry: "SlowForm", element: "slow-module-form" });',
@@ -120,9 +135,9 @@ describe('the reference host in Chromium', () => {
     assert.equal(answers['angular-module'].columns[0].path, 'details.customer');
     assert.deepEqual(answers['vue-module'].form, {
       entry: 'ConfirmRideForm',
-      element: { all: 'vue-module-confirm-ride', body: 'vue-module-confirm-ride-body', actions: 'vue-module-confirm-ride-actions' },
+      element: { all: NAMES['vue-module'].all, body: NAMES['vue-module'].body, actions: NAMES['vue-module'].actions },
     });
-    assert.deepEqual(answers['angular-module'].form.element.all, 'angular-module-confirm-ride');
+    assert.deepEqual(answers['angular-module'].form.element.all, NAMES['angular-module'].all);
 
     const loaded = await page.evaluate(() => performance.getEntriesByType('resource').map(({ name }) => new URL(name).pathname).filter((path) => path.startsWith('/wm/')));
     const scripts = loaded.filter((path) => path.endsWith('.js'));
@@ -150,8 +165,8 @@ describe('the reference host in Chromium', () => {
 
     const shadow = await page.evaluate(() => [...document.querySelectorAll('main [data-bc-area] > *')].map((element) => [element.localName, element.shadowRoot?.mode, element.area]));
     assert.deepEqual(shadow, MODULES.flatMap(({ moduleId }) => [
-      [`${moduleId}-confirm-ride-body`, 'open', 'body'],
-      [`${moduleId}-confirm-ride-actions`, 'open', 'actions'],
+      [NAMES[moduleId].body, 'open', 'body'],
+      [NAMES[moduleId].actions, 'open', 'actions'],
     ]));
     const color = (locator) => locator.evaluate((element) => getComputedStyle(element).color);
     for (const { name } of MODULES) {
@@ -201,7 +216,7 @@ describe('the reference host in Chromium', () => {
       const { page, consoleErrors } = await openPage();
       await page.evaluate(async ([id, task, container]) => window.bcTest.show(id, task, container), [moduleId, userTask('8'), pageId]);
       await shadowText(page, pageId, 'actions', 'dialog').click();
-      const dialog = page.locator(`dialog[data-bc-dialog="${moduleId}-confirm-ride-dialog"]`);
+      const dialog = page.locator(`dialog[data-bc-dialog="${NAMES[moduleId].dialog}"]`);
       assert.equal(await dialog.locator('[data-test="dialog-data"]').textContent(), 'actions');
       await dialog.locator('[data-test="close"]').click();
       await page.waitForFunction(() => document.querySelector('dialog') === null);
@@ -218,7 +233,7 @@ describe('the reference host in Chromium', () => {
     ), MODULES.map(({ moduleId, name }, index) => [moduleId, userTask(String(index + 3)), `${name}-all`]));
     assert.deepEqual(areas, [['all'], ['all'], ['all']]);
     const shown = await page.evaluate(() => [...document.querySelectorAll('#react-all > *, #vue-all > *, #angular-all > *')].map((element) => [element.localName, element.shadowRoot?.mode, element.area]));
-    assert.deepEqual(shown, MODULES.map(({ moduleId }) => [`${moduleId}-confirm-ride`, 'open', 'all']));
+    assert.deepEqual(shown, MODULES.map(({ moduleId }) => [NAMES[moduleId].all, 'open', 'all']));
     for (const { name, framework } of MODULES) {
       const pageId = `${name}-all`;
       const inForm = (testId) => page.locator(`#${pageId} [data-test="${testId}"]`);
@@ -238,7 +253,7 @@ describe('the reference host in Chromium', () => {
     for (const { moduleId, name } of MODULES) {
       const areas = await page.evaluate(async ([id, task, container]) => window.bcTest.show(id, task, container), [moduleId, userTask('5'), `${name}-page`]);
       assert.deepEqual(areas, ['body', 'actions']);
-      assert.equal(await page.locator(`${moduleId}-confirm-ride`).count(), 0);
+      assert.equal(await page.locator(NAMES[moduleId].all).count(), 0);
     }
     await page.close();
   });
@@ -259,7 +274,7 @@ describe('the reference host in Chromium', () => {
     const shown = await withHeader.page.evaluate(async (moduleIds) => Promise.all(
       moduleIds.map((moduleId) => window.bcTest.showHeader(moduleId, 'header')),
     ), MODULES.map(({ moduleId }) => moduleId));
-    assert.deepEqual(shown, MODULES.map(({ moduleId }) => [`${moduleId}-new-ride`]));
+    assert.deepEqual(shown, MODULES.map(({ moduleId }) => [NAMES[moduleId].newRide]));
     const buttons = withHeader.page.locator('#header [data-test="new-ride"]');
     await buttons.nth(MODULES.length - 1).waitFor({ timeout: 5000 });
     assert.deepEqual(await buttons.allTextContents(), MODULES.map(() => 'New ride for anna'));
@@ -285,6 +300,36 @@ describe('the reference host in Chromium', () => {
       ['NO_TARGET', undefined],
       'ok',
     ]);
+    await page.close();
+  });
+
+  it('EXT-044 EXT-048 the example modules start every name with their prefix and the id of their build', () => {
+    for (const { moduleId } of MODULES) {
+      const { buildId, ...names } = NAMES[moduleId];
+      assert.match(buildId, /^[a-z0-9]+$/);
+      assert.deepEqual(names, {
+        all: `${moduleId}-${buildId}-taxi-ride--confirm-ride--form`,
+        body: `${moduleId}-${buildId}-taxi-ride--confirm-ride--body`,
+        actions: `${moduleId}-${buildId}-taxi-ride--confirm-ride--actions`,
+        dialog: `${moduleId}-${buildId}-taxi-ride--confirm-ride--dialog`,
+        newRide: `${moduleId}-${buildId}-new-ride`,
+      });
+    }
+  });
+
+  it('EXT-044 refuses a web component without the prefix of its module, loads nothing for it, and says why', async () => {
+    const { page, consoleErrors } = await openPage();
+    const before = server.requests.length;
+    const error = await page.evaluate(async (task) => window.bcTest.show('stray-module', task, 'stray-page').then(
+      () => undefined,
+      (e) => ({ name: e.name, code: e.code, step: e.step, moduleId: e.moduleId, entry: e.entry, element: e.element }),
+    ), userTask('1'));
+    assert.deepEqual(error, { name: 'BcHostError', code: 'WRONG_ELEMENT_NAME', step: 'load', moduleId: 'stray-module', entry: 'StrayForm', element: 'react-module-confirm-ride' });
+    assert.deepEqual(server.requests.slice(before).filter((path) => path.startsWith('/wm/')), ['/wm/stray-module/bc-manifest.json', '/wm/stray-module/form.js']);
+    assert.equal(await page.evaluate(() => customElements.get('react-module-confirm-ride')), undefined);
+    const errors = await page.evaluate(() => window.bcTest.errors);
+    assert.match(errors.at(-1), /stray-module names the web component react-module-confirm-ride, which does not start with the prefix stray-module .*"stray-module-"/);
+    assert.deepEqual(consoleErrors, []);
     await page.close();
   });
 

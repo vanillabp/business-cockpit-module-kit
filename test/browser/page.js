@@ -16,6 +16,7 @@ const host = createModuleHost({
     { id: 'vue-module', uri: '/wm/vue-module' },
     { id: 'angular-module', uri: '/wm/angular-module' },
     { id: 'slow-module', uri: '/wm/slow-module' },
+    { id: 'stray-module', uri: '/wm/stray-module' },
     { id: 'renewed-module', uri: '/wm/renewed-module' },
   ],
   whenDefinedTimeoutMs: whenDefined ? Number(whenDefined) : undefined,

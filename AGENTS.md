@@ -38,9 +38,12 @@ of them has a bug. Fix both in the same week, and say in the pull request which 
   in `references/module-loading.md`: it reads the manifest again after `MANIFEST_RECHECK_MS`, keeps
   its build on a 304, loads the next part from a new `buildVersion` or `buildTimestamp`, draws at
   once when the current build defined every web component already, and throws `ALREADY_DEFINED`
-  when an earlier build did. Change the skill when you change one of these rules.
+  when an earlier build did. Before it loads, it checks every name against the prefix of its module
+  (`EXT-044` in the skill) and throws `WRONG_ELEMENT_NAME` for a name it refuses. Change the skill
+  when you change one of these rules.
 - `examples/` holds three example modules: React, Vue and Angular. They are private and never
-  published as npm packages. Built, they are part of `dist/conformance`, the test a generated cockpit runs.
+  published as npm packages. They build the names of their web components with
+  `createElementNames` and the build id, the way the skill asks a module to. Built, they are part of `dist/conformance`, the test a generated cockpit runs.
 - `conformance/` holds that test. It runs against any cockpit, so it only uses what the minimum
   promises.
 

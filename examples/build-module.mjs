@@ -1,12 +1,14 @@
-// Builds an example workflow module the way a real one builds: one ES module per entry with the
-// content hash in its name, no bare imports, and bc-manifest.json written from esbuild's list of
-// outputs. Then it runs bc-check-entries on the result, with the module's own data entries.
+// Builds an example workflow module the way a real one builds: src/bc-build.js with the build id
+// for the names of the web components, one ES module per entry with the content hash in its name,
+// no bare imports, and bc-manifest.json written from esbuild's list of outputs. Then it runs
+// bc-check-entries on the result, with the module's own data entries.
 
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { build } from 'esbuild';
 import { createManifest } from '@vanillabp/bc-module-kit';
 import { checkEntries } from '@vanillabp/bc-module-kit/check';
+import { writeBcBuild } from './write-bc-build.mjs';
 
 /**
  * @param {string} moduleDir the folder of the example module
@@ -17,6 +19,7 @@ export async function buildModule(moduleDir, entries, dataEntries = []) {
   const outdir = resolve(moduleDir, 'dist');
   rmSync(outdir, { recursive: true, force: true });
   mkdirSync(outdir, { recursive: true });
+  const buildTime = writeBcBuild(moduleDir);
   const entryPoints = Object.fromEntries(Object.entries(entries).map(([name, source]) => [name, resolve(moduleDir, source)]));
   const result = await build({
     entryPoints,
@@ -42,7 +45,7 @@ export async function buildModule(moduleDir, entries, dataEntries = []) {
   const metafilePath = join(outdir, 'meta.json');
   writeFileSync(metafilePath, JSON.stringify(result.metafile));
   // esbuild names each output relative to the module folder.
-  return writeManifestAndCheck(moduleDir, entries, metafilePath, dataEntries, moduleDir);
+  return writeManifestAndCheck(moduleDir, entries, metafilePath, dataEntries, moduleDir, buildTime);
 }
 
 /**
@@ -55,8 +58,9 @@ export async function buildModule(moduleDir, entries, dataEntries = []) {
  * @param {string} metafilePath the metafile of the build
  * @param {string[]} dataEntries data entries of the module beyond the four of the kit
  * @param {string} outputBase the folder the metafile names its outputs relative to
+ * @param {Date} buildTime the time of the build, the same as in the build id of src/bc-build.js
  */
-export function writeManifestAndCheck(moduleDir, entries, metafilePath, dataEntries, outputBase) {
+export function writeManifestAndCheck(moduleDir, entries, metafilePath, dataEntries, outputBase, buildTime) {
   const outdir = resolve(moduleDir, 'dist');
   const { outputs } = JSON.parse(readFileSync(metafilePath, 'utf8'));
   // The manifest: entry name -> file, from the build's own list of outputs.
@@ -69,7 +73,7 @@ export function writeManifestAndCheck(moduleDir, entries, metafilePath, dataEntr
   const missing = Object.keys(entries).filter((name) => !files[name]);
   if (missing.length > 0) throw new Error(`The build of ${moduleDir} wrote no file for ${missing.join(', ')}`);
   const manifestPath = join(outdir, 'bc-manifest.json');
-  writeFileSync(manifestPath, `${JSON.stringify(createManifest({ entries: files, buildVersion: '1.0.0' }), null, 2)}\n`);
+  writeFileSync(manifestPath, `${JSON.stringify(createManifest({ entries: files, buildVersion: '1.0.0', buildTimestamp: buildTime }), null, 2)}\n`);
 
   const { problems } = checkEntries(manifestPath, { metafile: metafilePath, dataEntries });
   if (problems.length > 0) throw new Error(`bc-check-entries failed for ${moduleDir}:\n- ${problems.join('\n- ')}`);

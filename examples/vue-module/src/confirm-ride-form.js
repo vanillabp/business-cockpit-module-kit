@@ -5,6 +5,7 @@
 
 import { createApp, h, onMounted, onUnmounted, ref, shallowReactive } from 'vue';
 import { defineBcElement } from '@vanillabp/bc-module-kit';
+import { CONFIRM_RIDE } from './element-names.js';
 
 const STYLE = 'p, button { color: rgb(200, 0, 0); font-family: monospace; }';
 const apps = new WeakMap();
@@ -53,7 +54,7 @@ function buttons(state, valid) {
     }
   };
   const dialog = async () => {
-    const closedWith = await state.props.openDialog({ element: 'vue-module-confirm-ride-dialog', entry: 'ConfirmRideForm' }, { from: 'actions' });
+    const closedWith = await state.props.openDialog({ element: CONFIRM_RIDE.dialog, entry: 'ConfirmRideForm' }, { from: 'actions' });
     result.value = `dialog: ${closedWith}`;
   };
   return () => [
@@ -65,7 +66,7 @@ function buttons(state, valid) {
 }
 
 // The area 'all': fields and buttons in one web component.
-vueElement('vue-module-confirm-ride', (state) => {
+vueElement(CONFIRM_RIDE.all, (state) => {
   const valid = ref(false);
   const renderFields = fields(state, (value) => { valid.value = value; });
   const renderButtons = buttons(state, valid);
@@ -73,13 +74,13 @@ vueElement('vue-module-confirm-ride', (state) => {
 });
 
 // The area 'body': the fields. It tells the area 'actions' whether the comment is valid.
-vueElement('vue-module-confirm-ride-body', (state) => {
+vueElement(CONFIRM_RIDE.body, (state) => {
   const renderFields = fields(state, (valid) => state.props.userTask.sendTo('actions', { valid }));
   return () => [h('style', STYLE), ...renderFields()];
 });
 
 // The area 'actions': the buttons.
-vueElement('vue-module-confirm-ride-actions', (state) => {
+vueElement(CONFIRM_RIDE.actions, (state) => {
   const valid = ref(false);
   let subscription;
   onMounted(() => {
@@ -90,7 +91,7 @@ vueElement('vue-module-confirm-ride-actions', (state) => {
   return () => [h('style', STYLE), ...renderButtons()];
 });
 
-vueElement('vue-module-confirm-ride-dialog', (state) => () => [
+vueElement(CONFIRM_RIDE.dialog, (state) => () => [
   h('p', { 'data-test': 'dialog-data' }, state.props.data?.from),
   h('button', { 'data-test': 'close', onClick: () => state.props.closeDialog('closed by Vue') }, 'Close'),
 ]);

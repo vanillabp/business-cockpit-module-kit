@@ -95,7 +95,8 @@ export interface ModuleHost {
   ask(moduleId: string, entry: string, args?: unknown[]): Promise<any>;
   /**
    * Does nothing when the current build of the module defined every web component already.
-   * Throws a `BcHostError` with the code `ALREADY_DEFINED` when an earlier build defined one.
+   * Throws a `BcHostError` with the code `WRONG_ELEMENT_NAME` for a name the module may not draw,
+   * and with the code `ALREADY_DEFINED` when an earlier build defined one.
    */
   load(moduleId: string, entry: string, elements: string[]): Promise<void>;
   draw(part: {
@@ -117,13 +118,22 @@ export declare const MANIFEST_RECHECK_MS: 60000;
 /** The code of a `BcHostError` thrown because an earlier build of the module defined the web component already. */
 export declare const ALREADY_DEFINED: 'ALREADY_DEFINED';
 
+/**
+ * The code of a `BcHostError` thrown because a module names a web component it may not draw: no
+ * valid name of a custom element, not the prefix of its module, or the longer prefix of another module.
+ */
+export declare const WRONG_ELEMENT_NAME: 'WRONG_ELEMENT_NAME';
+
 export declare class BcHostError extends Error {
   readonly step: 'ask' | 'load' | 'draw';
   readonly moduleId: string;
   readonly entry?: string;
   readonly element?: string;
-  /** `ALREADY_DEFINED` when only a reload of the page can show the new build of the module. */
-  readonly code?: typeof ALREADY_DEFINED;
+  /**
+   * `ALREADY_DEFINED` when only a reload of the page can show the new build of the module,
+   * `WRONG_ELEMENT_NAME` when the module names a web component it may not draw.
+   */
+  readonly code?: typeof ALREADY_DEFINED | typeof WRONG_ELEMENT_NAME;
 }
 
 export declare class BcRefusedError extends Error {

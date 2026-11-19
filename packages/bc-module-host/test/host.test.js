@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, it, mock } from 'node:test';
-import { ALREADY_DEFINED, BcHostError, MANIFEST_RECHECK_MS, createModuleHost } from '../src/index.js';
+import { createElementNames } from '@vanillabp/bc-module-kit';
+import { ALREADY_DEFINED, BcHostError, MANIFEST_RECHECK_MS, WRONG_ELEMENT_NAME, createModuleHost } from '../src/index.js';
 
 const manifest = {
   manifestVersion: 1,
@@ -282,13 +283,13 @@ describe('load and the names of the web components', () => {
   });
 
   /** A host whose visual entry `confirm-<files>.js` defines the web components `names[files]`. */
-  function loadingHost(build, names) {
+  function loadingHost(build, names, modules = [{ id: 'taxi-ride', uri: '/wm/taxi-ride' }]) {
     const server = deployedModule(build);
     const imported = [];
     const errors = [];
     const host = createModuleHost({
       baseUrl: 'https://cockpit.example.com/',
-      modules: [{ id: 'taxi-ride', uri: '/wm/taxi-ride' }],
+      modules,
       fetch: server.fetch,
       importModule: async (url) => {
         imported.push(url);
@@ -341,6 +342,52 @@ describe('load and the names of the web components', () => {
     mock.timers.tick(MANIFEST_RECHECK_MS + 1);
     await host.load('taxi-ride', 'ConfirmRideForm', ['taxi-ride-assess-risk']);
     assert.deepEqual(imported, [formOf('1.0.0'), formOf('1.1.0')]);
+  });
+
+  /** Runs `load` and returns the error it throws, or undefined. */
+  const refusal = (host, moduleId, name) => host.load(moduleId, 'ConfirmRideForm', [name]).then(() => undefined, (error) => error);
+
+  it('EXT-044 refuses a name without the prefix of its module, loads nothing, and names the module, the name and the prefix', async () => {
+    const { host, server, imported, errors } = loadingHost({ version: '1.0.0' }, { '1.0.0': ['taxi-confirm-ride'] });
+    const error = await refusal(host, 'taxi-ride', 'taxi-confirm-ride');
+    assert.ok(error instanceof BcHostError);
+    assert.equal(error.code, WRONG_ELEMENT_NAME);
+    assert.equal(error.step, 'load');
+    assert.equal(error.moduleId, 'taxi-ride');
+    assert.equal(error.entry, 'ConfirmRideForm');
+    assert.equal(error.element, 'taxi-confirm-ride');
+    assert.match(error.message, /module taxi-ride names the web component taxi-confirm-ride, which does not start with the prefix taxi-ride .*"taxi-ride-"/);
+    assert.deepEqual(errors, [error.message]);
+    assert.deepEqual(imported, []);
+    assert.equal(server.fetched.length, 0);
+  });
+
+  it('EXT-044 refuses a name which is no valid name of a custom element, or a reserved one', async () => {
+    const { host } = loadingHost({ version: '1.0.0' }, {}, [{ id: 'taxi-ride', uri: '/wm/taxi-ride' }, { id: 'font-face', uri: '/wm/font-face' }]);
+    for (const name of ['taxi-ride-Confirm', 'taxi-ride-con firm', 'taxi-ride-a/b', undefined]) {
+      assert.match((await refusal(host, 'taxi-ride', name))?.message ?? '', /which is no valid name of a custom element/, String(name));
+    }
+    assert.equal((await refusal(host, 'font-face', 'font-face-src'))?.code, WRONG_ELEMENT_NAME);
+  });
+
+  it('EXT-044 refuses a name with the longer prefix of another module of the registry', async () => {
+    const modules = [{ id: 'taxi', uri: '/wm/taxi' }, { id: 'taxi-ride', uri: '/wm/taxi-ride' }];
+    const { host, imported } = loadingHost({ version: '1.0.0' }, { '1.0.0': ['taxi-ride-confirm', 'taxi-ride-check'] }, modules);
+    const error = await refusal(host, 'taxi', 'taxi-ride-confirm');
+    assert.equal(error?.code, WRONG_ELEMENT_NAME);
+    assert.match(error.message, /taxi-ride-confirm, which starts with the prefix taxi-ride of the module taxi-ride/);
+    assert.deepEqual(imported, []);
+    // The module with the longer prefix may use it.
+    await host.load('taxi-ride', 'ConfirmRideForm', ['taxi-ride-check']);
+    assert.equal(imported.length, 1);
+  });
+
+  it('EXT-044 accepts the names of createElementNames, and a name without the build id', async () => {
+    const names = createElementNames('TaxiRide', 'mvaro4w0');
+    const withBuild = names.userTask('TaxiRide', 'confirmRide', 'form');
+    const { host, imported } = loadingHost({ version: '1.0.0' }, { '1.0.0': [withBuild, 'taxi-ride-confirm-ride'] }, [{ id: 'TaxiRide', uri: '/wm/TaxiRide' }]);
+    await host.load('TaxiRide', 'ConfirmRideForm', [withBuild, 'taxi-ride-confirm-ride']);
+    assert.equal(imported.length, 1);
   });
 
   it('a web component the entry defined but the host did not wait for is noted on its first use', async () => {

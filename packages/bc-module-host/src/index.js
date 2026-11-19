@@ -22,6 +22,7 @@ import {
   RESPONSE_EVENT,
   USER_TASK_FORM,
   WORKFLOW_PAGE,
+  elementPrefix,
   entryUrl,
   readManifest,
 } from '@vanillabp/bc-module-kit';
@@ -40,6 +41,34 @@ export const MANIFEST_RECHECK_MS = 60_000;
  * component in this page already. Only a reload of the page shows the new build of such a module.
  */
 export const ALREADY_DEFINED = 'ALREADY_DEFINED';
+
+/**
+ * The code of a `BcHostError` thrown because a module names a web component the host refuses: the
+ * name is no valid name of a custom element, it does not start with the prefix of its module and a
+ * hyphen, or it starts with the longer prefix of another module of the registry.
+ */
+export const WRONG_ELEMENT_NAME = 'WRONG_ELEMENT_NAME';
+
+/** Names the HTML standard does not allow for a custom element, although they have a hyphen. */
+const RESERVED_ELEMENT_NAMES = new Set([
+  'annotation-xml',
+  'color-profile',
+  'font-face',
+  'font-face-src',
+  'font-face-uri',
+  'font-face-format',
+  'font-face-name',
+  'missing-glyph',
+]);
+
+/** The characters the HTML standard allows in the name of a custom element after its first letter. */
+const ELEMENT_NAME_CHAR = '[-.0-9_a-z\\u00B7\\u00C0-\\u00D6\\u00D8-\\u00F6\\u00F8-\\u037D\\u037F-\\u1FFF\\u200C-\\u200D\\u203F-\\u2040\\u2070-\\u218F\\u2C00-\\u2FEF\\u3001-\\uD7FF\\uF900-\\uFDCF\\uFDF0-\\uFFFD\\u{10000}-\\u{EFFFF}]';
+const VALID_ELEMENT_NAME = new RegExp(`^[a-z]${ELEMENT_NAME_CHAR}*-${ELEMENT_NAME_CHAR}*$`, 'u');
+
+/** Whether the HTML standard allows `name` as the name of a custom element. */
+function isValidElementName(name) {
+  return typeof name === 'string' && VALID_ELEMENT_NAME.test(name) && !RESERVED_ELEMENT_NAMES.has(name);
+}
 
 const HTTP_NOT_MODIFIED = 304;
 const HTTP_NOT_FOUND = 404;
@@ -360,8 +389,46 @@ export function createModuleHost(options = {}) {
   }
 
   /**
-   * Step two: load the visual entry and wait for every web component it should define. When the
-   * build the host has now defined all of them already, it does nothing: no import(), no waiting.
+   * Refuses the names of web components which a module may not draw, before anything is loaded.
+   * A name is refused when it is no valid name of a custom element, when it does not start with
+   * the prefix of its module and a hyphen, or when it starts with the longer prefix of another
+   * module of the registry: a module `taxi` may not name `taxi-ride-confirm` when there is a
+   * module `taxi-ride`. The check does not look for the build id, so a name without it passes.
+   *
+   * @param {string} moduleId
+   * @param {string} entry
+   * @param {unknown[]} names
+   */
+  async function checkElementNames(moduleId, entry, names) {
+    await registry.load();
+    const prefix = elementPrefix(moduleId);
+    const otherPrefixes = registry.list()
+      .filter(({ id }) => id !== moduleId)
+      .map(({ id }) => ({ id, prefix: elementPrefix(id) }))
+      .filter((other) => other.prefix.length > prefix.length);
+    for (const name of names) {
+      let problem;
+      if (!isValidElementName(name)) {
+        problem = 'is no valid name of a custom element';
+      } else if (!name.startsWith(`${prefix}-`)) {
+        problem = `does not start with the prefix ${prefix} of the module and a hyphen`;
+      } else {
+        const other = otherPrefixes.find((candidate) => name.startsWith(`${candidate.prefix}-`));
+        if (other) problem = `starts with the prefix ${other.prefix} of the module ${other.id}`;
+      }
+      if (problem) {
+        const message = `The module ${moduleId} names the web component ${typeof name === 'string' ? name : String(name)}, which ${problem}. Every web component of the module ${moduleId} has to start with "${prefix}-", so the host loads nothing for it. Build the names with createElementNames of the module kit.`;
+        logger?.error?.(message);
+        throw new BcHostError({ step: 'load', moduleId, entry, element: typeof name === 'string' ? name : undefined, code: WRONG_ELEMENT_NAME, message });
+      }
+    }
+  }
+
+  /**
+   * Step two: load the visual entry and wait for every web component it should define. First it
+   * checks the names, see `checkElementNames`, and throws a `BcHostError` with the code
+   * `WRONG_ELEMENT_NAME` for a name the module may not draw. When the build the host has now
+   * defined all of them already, it does nothing: no import(), no waiting.
    * When an earlier build of the module defined one of them, the new visual entry could not define
    * it again, so the host loads nothing and throws a `BcHostError` with the code `ALREADY_DEFINED`.
    *
@@ -370,6 +437,7 @@ export function createModuleHost(options = {}) {
    * @param {string[]} names
    */
   async function load(moduleId, entry, names) {
+    await checkElementNames(moduleId, entry, names);
     let read;
     try {
       read = await readManifestOf(moduleId);

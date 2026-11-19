@@ -6,6 +6,7 @@
 import { Component, type OnDestroy, type OnInit, input, output, signal } from '@angular/core';
 import type { BcElementProps, BcSubscription, BcUserTask } from '@vanillabp/bc-module-kit';
 import { angularElement } from './angular-element';
+import { CONFIRM_RIDE } from './element-names.js';
 
 const STYLES = ['p, button { color: rgb(200, 0, 0); font-family: monospace; }'];
 
@@ -58,7 +59,7 @@ class Buttons {
   }
 
   async dialog(): Promise<void> {
-    const closedWith = await this.props().openDialog({ element: 'angular-module-confirm-ride-dialog', entry: 'ConfirmRideForm' }, { from: 'actions' });
+    const closedWith = await this.props().openDialog({ element: CONFIRM_RIDE.dialog, entry: 'ConfirmRideForm' }, { from: 'actions' });
     this.state.set(`dialog: ${closedWith}`);
   }
 }
@@ -117,7 +118,7 @@ class Dialog {
   }
 }
 
-angularElement('angular-module-confirm-ride', All);
-angularElement('angular-module-confirm-ride-body', Body);
-angularElement('angular-module-confirm-ride-actions', Actions);
-angularElement('angular-module-confirm-ride-dialog', Dialog);
+angularElement(CONFIRM_RIDE.all, All);
+angularElement(CONFIRM_RIDE.body, Body);
+angularElement(CONFIRM_RIDE.actions, Actions);
+angularElement(CONFIRM_RIDE.dialog, Dialog);
