@@ -5,7 +5,7 @@ fulfils, and a minimal host to test it. Read [`README.md`](./README.md) first.
 
 ## What belongs here
 
-The contract itself is described in the skill `business-cockpit-user-interface` of the
+The contract itself is described in the skill `business-cockpit-creator` of the
 [business-cockpit](https://github.com/vanillabp/business-cockpit) repository, in
 `references/module-loading.md` and `references/types.md`. Where the kit and the skill disagree, one
 of them has a bug. Fix both in the same week, and say in the pull request which one was right.
