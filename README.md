@@ -316,8 +316,9 @@ const manifest = createManifest({
 writeFileSync('dist/bc-manifest.json', JSON.stringify(manifest, null, 2));
 ```
 
-[`examples/build-module.mjs`](./examples/build-module.mjs) does this with esbuild, for all three
-example modules.
+[`examples/build-module.mjs`](./examples/build-module.mjs) does this with esbuild, for the React and
+the Vue example. The Angular example builds with the Angular CLI, see
+[An Angular module](#an-angular-module).
 
 ## Checking a module's build
 
@@ -355,20 +356,25 @@ module would have to build the event protocol a second time: the functions in th
 end of all subscriptions and the `DISCONNECTED` answers when the web component leaves the page.
 With `defineBcElement` an Angular module behaves exactly like the other two.
 
-Angular puts the styles of a component into the head of the page, and from there they do not reach
-into a shadow root. So the helper writes the module's style into the shadow root itself.
+The components keep their styles in `styles`, as Angular components usually do. The helper puts
+the host element into the shadow root before it creates the component. Angular then writes the
+styles into that shadow root, so they reach the component and never reach the cockpit. A host
+element outside a shadow root would send them into the head of the page instead. So would a single
+component created through a `ViewContainerRef`, for example with `NgComponentOutlet`: Angular
+creates its host element outside the page, and from then on writes every style of the module into
+the head as well. A module which needs such components writes its style into each shadow root
+itself and gives its components no styles.
 
-The build has two steps more than the other examples, both from Angular's own compiler
-(`@angular/compiler-cli`):
-
-1. The Angular compiler compiles the components ahead of time into plain JavaScript. The browser
-   gets no template compiler.
-1. Angular publishes its own packages half compiled. The Angular linker finishes them while esbuild
-   bundles. The Angular CLI does the same.
-
-The data entries are plain JavaScript and skip both steps, so `bc-check-entries` finds no Angular in
-them. See [`build.mjs`](./examples/angular-module/build.mjs). Your module may build with the Angular
-CLI instead, as long as the build writes one ES module per entry and `bc-manifest.json` next to them.
+The module builds with the Angular CLI and its `application` builder from `@angular/build`, the
+way every Angular project builds. The CLI compiles the components ahead of time, so the browser
+gets no template compiler. [`angular.json`](./examples/angular-module/angular.json) asks for no
+`index.html` and no polyfills. Its entry point,
+[`src/entries.ts`](./examples/angular-module/src/entries.ts), holds one `import()` per entry. The
+CLI writes each of them as an ES module of its own with a hash in its name, and puts Angular into
+a chunk the visual entries share. With `statsJson` it also writes its list of outputs.
+[`scripts/write-manifest.mjs`](./examples/angular-module/scripts/write-manifest.mjs) takes the file
+of each entry from that list, writes `bc-manifest.json` and runs `bc-check-entries`. The data
+entries are plain JavaScript, so `bc-check-entries` finds no Angular in them.
 
 ## The host
 

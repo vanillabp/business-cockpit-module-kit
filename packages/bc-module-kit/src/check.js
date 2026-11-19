@@ -111,13 +111,16 @@ function readMetafile(metafilePath) {
  * Says whether an input of a bundle comes from a framework package.
  *
  * @param {string} input
- * @returns {string | undefined} the package
+ * @returns {string | undefined} the full name of the package, for example `@angular/core`
  */
 function frameworkOfInput(input) {
   const parts = input.split(/[\\/]node_modules[\\/]|^node_modules[\\/]/);
   if (parts.length < 2) return undefined;
-  const path = parts[parts.length - 1];
-  return FRAMEWORK_PACKAGES.find((name) => (name.endsWith('/') ? path.startsWith(name) : path === name || path.startsWith(`${name}/`)));
+  const segments = parts[parts.length - 1].split(/[\\/]/);
+  // A scoped package has two segments in its name, @scope/name.
+  const name = segments[0].startsWith('@') ? segments.slice(0, 2).join('/') : segments[0];
+  const isFramework = FRAMEWORK_PACKAGES.some((framework) => (framework.endsWith('/') ? name.startsWith(framework) : name === framework));
+  return isFramework ? name : undefined;
 }
 
 /**

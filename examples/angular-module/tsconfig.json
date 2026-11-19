@@ -6,12 +6,11 @@
     "lib": ["ES2022", "DOM"],
     "strict": true,
     "skipLibCheck": true,
-    "rootDir": "src",
-    "outDir": ".ngc"
+    "allowJs": true,
+    "rootDir": "src"
   },
-  "files": ["src/confirm-ride-form.ts", "src/header-buttons.ts"],
+  "include": ["src"],
   "angularCompilerOptions": {
-    "compilationMode": "full",
     "strictTemplates": true,
     "strictInjectionParameters": true
   }

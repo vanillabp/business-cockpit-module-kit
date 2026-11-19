@@ -1,17 +1,18 @@
 // Visual entry ConfirmRideForm, written in Angular with standalone components and signals.
 // Evaluating it defines four web components: the whole form for the area 'all', the same form
 // split into the areas 'body' and 'actions', and a dialog. Each one renders into its own shadow
-// root.
+// root, and Angular writes the styles of a component into that shadow root.
 
 import { Component, type OnDestroy, type OnInit, input, output, signal } from '@angular/core';
 import type { BcElementProps, BcSubscription, BcUserTask } from '@vanillabp/bc-module-kit';
 import { angularElement } from './angular-element';
 
-const STYLE = 'p, button { color: rgb(200, 0, 0); font-family: monospace; }';
+const STYLES = ['p, button { color: rgb(200, 0, 0); font-family: monospace; }'];
 
 /** The fields of the form. It reports whether the comment is valid. */
 @Component({
   selector: 'confirm-ride-fields',
+  styles: STYLES,
   template: `
     <p data-test="framework">Angular</p>
     <p data-test="title">{{ userTask().title }}</p>
@@ -33,6 +34,7 @@ class Fields {
 /** The buttons of the form. */
 @Component({
   selector: 'confirm-ride-buttons',
+  styles: STYLES,
   template: `
     <button data-test="claim" (click)="claim()">Claim</button>
     <button data-test="complete" [disabled]="!valid()">Complete</button>
@@ -115,7 +117,7 @@ class Dialog {
   }
 }
 
-angularElement('angular-module-confirm-ride', All, STYLE);
-angularElement('angular-module-confirm-ride-body', Body, STYLE);
-angularElement('angular-module-confirm-ride-actions', Actions, STYLE);
+angularElement('angular-module-confirm-ride', All);
+angularElement('angular-module-confirm-ride-body', Body);
+angularElement('angular-module-confirm-ride-actions', Actions);
 angularElement('angular-module-confirm-ride-dialog', Dialog);

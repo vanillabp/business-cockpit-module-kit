@@ -61,7 +61,31 @@ describe('bc-check-entries', () => {
     writeFileSync(metafile, JSON.stringify({ outputs: { 'dist/entries/list.js': { inputs: { 'node_modules/@vue/shared/dist/shared.esm-bundler.js': {}, 'src/list.js': {} } } } }));
     const result = run(manifest, '--metafile', metafile);
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /built from node_modules\/@vue\/shared.* of the package @vue\//);
+    assert.match(result.stderr, /built from node_modules\/@vue\/shared.* of the package @vue\/shared;/);
+  });
+
+  it('PKG-022 names the full package of a framework, scoped or not', () => {
+    const manifest = moduleDist({ 'list.js': 'export const userTaskListColumns=()=>[];' }, { UserTaskList: 'list.js' });
+    const metafile = join(dirname(manifest), 'meta.json');
+    writeFileSync(metafile, JSON.stringify({
+      outputs: {
+        'list.js': {
+          inputs: {
+            'node_modules/@angular/core/fesm2022/core.mjs': {},
+            'node_modules/react-dom/cjs/react-dom.production.js': {},
+            'node_modules/react/index.js': {},
+            'node_modules/react-router/dist/index.js': {},
+            'src/list.js': {},
+          },
+        },
+      },
+    }));
+    const { problems } = checkEntries(manifest, { metafile });
+    assert.deepEqual(problems, [
+      'UserTaskList: list.js was built from node_modules/@angular/core/fesm2022/core.mjs of the package @angular/core; a data entry carries no framework',
+      'UserTaskList: list.js was built from node_modules/react-dom/cjs/react-dom.production.js of the package react-dom; a data entry carries no framework',
+      'UserTaskList: list.js was built from node_modules/react/index.js of the package react; a data entry carries no framework',
+    ]);
   });
 
   it('PKG-023 fails for a data entry larger than the limit, together with the files it imports', () => {
