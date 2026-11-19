@@ -13,7 +13,7 @@ two npm packages:
 | `@vanillabp/bc-module-kit`  | The module's side of the contract: `bc-manifest.json`, `bc-check-entries`, the event protocol, `defineBcElement`, the names of the entries and the names of the web components. Plain JavaScript, no dependencies. |
 | `@vanillabp/bc-module-host` | A minimal host which loads the parts of a module the way a cockpit does. For the tests of a module, not for production. |
 
-The contract is described in the skill `business-cockpit-user-interface` of the `business-cockpit`
+The contract is described in the skill `business-cockpit-creator` of the `business-cockpit`
 repository, in `references/module-loading.md` and `references/types.md`. A module which passes its
 tests against this kit loads in every cockpit generated with that skill.
 
