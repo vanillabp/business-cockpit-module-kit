@@ -29,18 +29,34 @@ import {
 /** How long the host waits for a web component to be defined, in milliseconds. */
 export const DEFAULT_WHEN_DEFINED_TIMEOUT_MS = 10_000;
 
+/**
+ * How long the host uses a manifest before it reads it again, in milliseconds. It reads it again
+ * only before it asks a part of the module, so a module nobody uses is not asked at all.
+ */
+export const MANIFEST_RECHECK_MS = 60_000;
+
+/**
+ * The code of a `BcHostError` thrown because an earlier build of the module defined a web
+ * component in this page already. Only a reload of the page shows the new build of such a module.
+ */
+export const ALREADY_DEFINED = 'ALREADY_DEFINED';
+
+const HTTP_NOT_MODIFIED = 304;
+const HTTP_NOT_FOUND = 404;
+
 /** A step of ask, load and draw that failed. */
 export class BcHostError extends Error {
   /**
-   * @param {{ step: 'ask' | 'load' | 'draw', moduleId: string, entry?: string, element?: string, message: string, cause?: unknown }} details
+   * @param {{ step: 'ask' | 'load' | 'draw', moduleId: string, entry?: string, element?: string, code?: string, message: string, cause?: unknown }} details
    */
-  constructor({ step, moduleId, entry, element, message, cause }) {
+  constructor({ step, moduleId, entry, element, code, message, cause }) {
     super(message, { cause });
     this.name = 'BcHostError';
     this.step = step;
     this.moduleId = moduleId;
     this.entry = entry;
     this.element = element;
+    this.code = code;
   }
 }
 
@@ -72,6 +88,8 @@ export function createModuleHost(options = {}) {
     loadModules,
     loadModule,
     whenDefinedTimeoutMs = DEFAULT_WHEN_DEFINED_TIMEOUT_MS,
+    manifestRecheckMs = MANIFEST_RECHECK_MS,
+    onNewBuild,
     actions = {},
     logger = globalThis.console,
     dialogContainer,
@@ -84,10 +102,6 @@ export function createModuleHost(options = {}) {
 
   /** @type {Map<string, { id: string, uri?: string, version?: string }>} */
   const modules = new Map((options.modules ?? []).map((module) => [module.id, module]));
-  /** @type {Map<string, Promise<{ manifest: any, url: string } | undefined>>} */
-  const manifests = new Map();
-  /** @type {Map<string, Promise<any>>} */
-  const loadedEntries = new Map();
   let registryLoaded = options.modules ? Promise.resolve() : undefined;
 
   const manifestUrlOf = (moduleId) => new URL(`/wm/${encodeURIComponent(moduleId)}/${MANIFEST_FILE_NAME}`, baseUrl).href;
@@ -114,51 +128,197 @@ export function createModuleHost(options = {}) {
   };
 
   /**
-   * Reads the manifest of a module once. A module without a manifest (404) has no parts, and the
-   * host does not ask again. Any other failure is forgotten, so the next call asks again.
+   * What the loader holds for one module: the manifest it loads from, when it read it last, the
+   * read that runs now, and the promises of the entries of the current build.
+   *
+   * @typedef {{ manifest: any, url: string, etag?: string, lastModified?: string, build: string }} ManifestRead
+   * @typedef {{
+   *   current?: ManifestRead,
+   *   readAt: number,
+   *   missing: boolean,
+   *   reading?: Promise<ManifestRead | undefined>,
+   *   waiting: Map<string, Promise<any>>,
+   *   entries: Map<string, Promise<any>>,
+   *   earlierBuilds: Set<string>,
+   * }} ModuleState
    */
-  function readManifestOf(moduleId) {
-    let promise = manifests.get(moduleId);
-    if (!promise) {
-      const url = manifestUrlOf(moduleId);
-      promise = (async () => {
+
+  /** @type {Map<string, ModuleState>} */
+  const moduleStates = new Map();
+  /** @type {Map<string, string>} web component -> the module and build which defined it, as `<module>\n<build>` */
+  const definedBy = new Map();
+
+  function stateOf(moduleId) {
+    let state = moduleStates.get(moduleId);
+    if (!state) {
+      state = { readAt: -Infinity, missing: false, waiting: new Map(), entries: new Map(), earlierBuilds: new Set() };
+      moduleStates.set(moduleId, state);
+    }
+    return state;
+  }
+
+  /**
+   * Says which build a manifest belongs to. `buildVersion` alone is not enough, because a version
+   * like `1.4.0-SNAPSHOT` stays the same over many builds, so `buildTimestamp` counts as well. A
+   * manifest with neither is told apart by its files, which carry the hash of their content.
+   */
+  function buildOf(manifest) {
+    const { buildVersion, buildTimestamp, entries } = manifest;
+    if (buildVersion !== undefined || buildTimestamp !== undefined) return JSON.stringify([buildVersion, buildTimestamp]);
+    return JSON.stringify(Object.entries(entries).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+  }
+
+  /**
+   * Reads the manifest of a module and keeps it. A module without a manifest (404) has no parts,
+   * and the host does not ask again. When the first read fails, it is forgotten, so the next call
+   * asks again. When a later read fails, the host goes on with the manifest it has and asks again
+   * the next time.
+   *
+   * @param {string} moduleId
+   * @param {ModuleState} state
+   * @returns {Promise<ManifestRead | undefined>}
+   */
+  function readManifestNow(moduleId, state) {
+    const url = manifestUrlOf(moduleId);
+    const previous = state.current;
+    const keepPrevious = (problem) => {
+      logger?.warn?.(`Reading the manifest of the module ${moduleId} again failed (${problem}), so the host goes on with the build it has`);
+      return previous;
+    };
+    state.waiting = new Map();
+    const reading = (async () => {
+      if (!previous) {
         const module = await registry.ensure(moduleId);
-        if (module && module.uri === '') return undefined;
-        const response = await fetchFn(url, { cache: 'no-cache' });
-        if (response.status === 404) return undefined;
-        if (!response.ok) throw new Error(`${url} answered with HTTP status ${response.status}`);
-        return { manifest: readManifest(await response.text()), url };
-      })();
-      manifests.set(moduleId, promise);
-      promise.catch(() => manifests.delete(moduleId));
+        if (module && module.uri === '') {
+          state.missing = true;
+          return undefined;
+        }
+      }
+      // A browser asks again with the ETag of its cache by itself. A fetch without a cache, as in
+      // Node.js, gets the 304 only when the host names the version it has.
+      const conditions = {
+        ...(previous?.etag ? { 'if-none-match': previous.etag } : {}),
+        ...(previous?.lastModified ? { 'if-modified-since': previous.lastModified } : {}),
+      };
+      const init = Object.keys(conditions).length > 0 ? { cache: 'no-cache', headers: conditions } : { cache: 'no-cache' };
+      let response;
+      try {
+        response = await fetchFn(url, init);
+      } catch (error) {
+        if (previous) return keepPrevious(error?.message ?? error);
+        throw error;
+      }
+      if (previous && response.status === HTTP_NOT_MODIFIED) {
+        state.readAt = Date.now();
+        return previous;
+      }
+      if (!previous && response.status === HTTP_NOT_FOUND) {
+        state.missing = true;
+        return undefined;
+      }
+      if (!response.ok) {
+        const problem = `${url} answered with HTTP status ${response.status}`;
+        if (previous) return keepPrevious(problem);
+        throw new Error(problem);
+      }
+      let manifest;
+      try {
+        manifest = readManifest(await response.text());
+      } catch (error) {
+        if (previous) return keepPrevious(error.message);
+        throw error;
+      }
+      const read = {
+        manifest,
+        url,
+        etag: response.headers?.get?.('etag') ?? undefined,
+        lastModified: response.headers?.get?.('last-modified') ?? undefined,
+        build: buildOf(manifest),
+      };
+      if (previous && previous.build !== read.build) {
+        // A new build: everything loaded from the old one is dropped. Parts already on the page stay.
+        state.entries = new Map();
+        state.earlierBuilds.add(previous.build);
+      }
+      state.current = read;
+      state.readAt = Date.now();
+      if (previous && previous.build !== read.build) onNewBuild?.(moduleId, read.manifest, previous.manifest);
+      return read;
+    })();
+    state.reading = reading;
+    reading.then(
+      () => { state.reading = undefined; },
+      () => { state.reading = undefined; },
+    );
+    return reading;
+  }
+
+  /**
+   * Returns the read of the manifest which runs now, or starts one when the module was never read
+   * or its last read is older than `manifestRecheckMs`. Returns `undefined` when the manifest the
+   * host has is recent enough.
+   *
+   * @param {string} moduleId
+   * @param {ModuleState} state
+   */
+  function refreshManifest(moduleId, state) {
+    if (state.missing) return undefined;
+    if (state.reading) return state.reading;
+    if (state.current && Date.now() - state.readAt <= manifestRecheckMs) return undefined;
+    return readManifestNow(moduleId, state);
+  }
+
+  /** The manifest of a module, read again first when that is due. */
+  function readManifestOf(moduleId) {
+    const state = stateOf(moduleId);
+    return refreshManifest(moduleId, state) ?? Promise.resolve(state.current);
+  }
+
+  /**
+   * Imports an entry of the build the host has now, once. The promise goes into the map in the
+   * same synchronous step as import(), so every caller gets the same pending promise. A failed
+   * import is forgotten, and the next call reads the manifest again first.
+   *
+   * @param {ModuleState} state
+   * @param {string} entry
+   * @param {ManifestRead | undefined} read
+   */
+  function importEntry(state, entry, read) {
+    if (!read) return Promise.resolve(undefined);
+    let promise = state.entries.get(entry);
+    if (!promise) {
+      const url = entryUrl(read.manifest, entry, read.url);
+      if (!url) return Promise.resolve(undefined);
+      const entries = state.entries;
+      promise = (async () => importModule(url))();
+      entries.set(entry, promise);
+      promise.catch(() => {
+        if (entries.get(entry) === promise) entries.delete(entry);
+        state.readAt = -Infinity;
+      });
     }
     return promise;
   }
 
   /**
-   * Loads an entry of a module once and returns its exports, or `undefined` when the module's
-   * manifest does not name it. A failed load is forgotten, so a retry reads the manifest again
-   * and calls import() again.
+   * Loads an entry of a module once per build and returns its exports, or `undefined` when the
+   * module's manifest does not name it. Before it does, it reads the manifest again when its last
+   * read is older than `manifestRecheckMs`. A failed load is forgotten, so a retry reads the
+   * manifest again and calls import() again.
    *
    * @param {string} moduleId
    * @param {string} entry
    */
   function loadEntry(moduleId, entry) {
-    const key = `${moduleId}\n${entry}`;
-    let promise = loadedEntries.get(key);
+    const state = stateOf(moduleId);
+    const reading = refreshManifest(moduleId, state);
+    if (!reading) return importEntry(state, entry, state.current);
+    // Callers which come while the manifest is read share one promise per entry as well.
+    const waiting = state.waiting;
+    let promise = waiting.get(entry);
     if (!promise) {
-      promise = (async () => {
-        const read = await readManifestOf(moduleId);
-        if (!read) return undefined;
-        const url = entryUrl(read.manifest, entry, read.url);
-        if (!url) return undefined;
-        return importModule(url);
-      })();
-      loadedEntries.set(key, promise);
-      promise.catch(() => {
-        loadedEntries.delete(key);
-        manifests.delete(moduleId);
-      });
+      promise = reading.then((read) => importEntry(state, entry, read));
+      waiting.set(entry, promise);
     }
     return promise;
   }
@@ -200,13 +360,35 @@ export function createModuleHost(options = {}) {
   }
 
   /**
-   * Step two: load the visual entry and wait for every web component it should define.
+   * Step two: load the visual entry and wait for every web component it should define. When the
+   * build the host has now defined all of them already, it does nothing: no import(), no waiting.
+   * When an earlier build of the module defined one of them, the new visual entry could not define
+   * it again, so the host loads nothing and throws a `BcHostError` with the code `ALREADY_DEFINED`.
    *
    * @param {string} moduleId
    * @param {string} entry
    * @param {string[]} names
    */
   async function load(moduleId, entry, names) {
+    let read;
+    try {
+      read = await readManifestOf(moduleId);
+    } catch (cause) {
+      throw new BcHostError({ step: 'load', moduleId, entry, message: `The visual entry ${entry} of the module ${moduleId} failed to load`, cause });
+    }
+    const state = stateOf(moduleId);
+    if (read) {
+      const thisBuild = `${moduleId}\n${read.build}`;
+      const definedByThisBuild = (name) => customElements.get(name) !== undefined && definedBy.get(name) === thisBuild;
+      if (names.every(definedByThisBuild)) return;
+      const definedEarlier = names.find((name) => !definedByThisBuild(name) && customElements.get(name) !== undefined
+        && (definedBy.has(name) || state.earlierBuilds.size > 0));
+      if (definedEarlier) {
+        const message = `The module ${moduleId} was updated, but its new build names the web component ${definedEarlier}, which an earlier build defined in this page already. Reload the page to show the new build.`;
+        logger?.error?.(message);
+        throw new BcHostError({ step: 'load', moduleId, entry, element: definedEarlier, code: ALREADY_DEFINED, message });
+      }
+    }
     let exports;
     try {
       exports = await loadEntry(moduleId, entry);
@@ -222,6 +404,7 @@ export function createModuleHost(options = {}) {
         logger?.error?.(message);
         throw new BcHostError({ step: 'load', moduleId, entry, element: name, message });
       }
+      if (read && !definedBy.has(name)) definedBy.set(name, `${moduleId}\n${read.build}`);
     }
   }
 

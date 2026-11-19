@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { describe, it } from 'node:test';
-import { BcHostError, createModuleHost } from '../src/index.js';
+import { afterEach, beforeEach, describe, it, mock } from 'node:test';
+import { ALREADY_DEFINED, BcHostError, MANIFEST_RECHECK_MS, createModuleHost } from '../src/index.js';
 
 const manifest = {
   manifestVersion: 1,
@@ -109,6 +109,246 @@ describe('the loader', () => {
   it('refuses a manifest which breaks the format', async () => {
     const { host } = testHost({ manifests: { 'taxi-ride': { manifestVersion: 2, entries: {} } } });
     await assert.rejects(host.readManifest('taxi-ride'), /only knows version 1/);
+  });
+});
+
+const HTTP_NOT_MODIFIED = 304;
+
+/**
+ * A module whose server can be given a new build. The manifest carries an ETag, and a request with
+ * the ETag of the current build is answered with 304.
+ */
+function deployedModule(build) {
+  const server = { build, fetched: [], failNext: false, deploy(next) { server.build = next; } };
+  const manifestOf = ({ version, timestamp, files = version }) => ({
+    manifestVersion: 1,
+    ...(version === undefined ? {} : { buildVersion: version }),
+    ...(timestamp === undefined ? {} : { buildTimestamp: timestamp }),
+    entries: { UserTaskForm: `form-${files}.js`, UserTaskList: `list-${files}.js`, ConfirmRideForm: `confirm-${files}.js` },
+  });
+  server.fetch = async (url, init) => {
+    server.fetched.push(init);
+    if (server.failNext) {
+      server.failNext = false;
+      throw new TypeError('network down');
+    }
+    const body = JSON.stringify(manifestOf(server.build));
+    const etag = `"${body.length}-${server.build.version}-${server.build.files}-${server.build.timestamp}"`;
+    if (init?.headers?.['if-none-match'] === etag) return new Response(null, { status: HTTP_NOT_MODIFIED, headers: { etag } });
+    return new Response(body, { headers: { etag } });
+  };
+  return server;
+}
+
+describe('a new build of a module', () => {
+  const at = (path) => `https://cockpit.example.com/wm/taxi-ride/${path}`;
+
+  beforeEach(() => mock.timers.enable({ apis: ['Date'], now: 0 }));
+  afterEach(() => mock.timers.reset());
+
+  function renewableHost(build, options = {}) {
+    const server = deployedModule(build);
+    const imported = [];
+    const newBuilds = [];
+    const warnings = [];
+    const host = createModuleHost({
+      baseUrl: 'https://cockpit.example.com/',
+      modules: [{ id: 'taxi-ride', uri: '/wm/taxi-ride' }],
+      fetch: server.fetch,
+      importModule: async (url) => {
+        imported.push(url);
+        return { url };
+      },
+      onNewBuild: (moduleId, manifest, previous) => newBuilds.push([moduleId, previous.buildVersion, manifest.buildVersion]),
+      logger: { warn: (message) => warnings.push(message), error: (message) => warnings.push(message) },
+      ...options,
+    });
+    return { host, server, imported, newBuilds, warnings };
+  }
+
+  it('EXT-047 reads the manifest again only when its last read is older than MANIFEST_RECHECK_MS', async () => {
+    const { host, server } = renewableHost({ version: '1.0.0' });
+    await host.loadEntry('taxi-ride', 'UserTaskForm');
+    mock.timers.tick(MANIFEST_RECHECK_MS);
+    await host.loadEntry('taxi-ride', 'UserTaskList');
+    await host.loadEntry('taxi-ride', 'UserTaskForm');
+    assert.equal(server.fetched.length, 1);
+    mock.timers.tick(1);
+    await Promise.all([host.loadEntry('taxi-ride', 'UserTaskForm'), host.loadEntry('taxi-ride', 'UserTaskList'), host.readManifest('taxi-ride')]);
+    assert.equal(server.fetched.length, 2);
+    assert.equal(MANIFEST_RECHECK_MS, 60_000);
+  });
+
+  it('EXT-047 the time is an option, so a test does not wait a minute', async () => {
+    const { host, server } = renewableHost({ version: '1.0.0' }, { manifestRecheckMs: 200 });
+    await host.loadEntry('taxi-ride', 'UserTaskForm');
+    mock.timers.tick(201);
+    await host.loadEntry('taxi-ride', 'UserTaskForm');
+    assert.equal(server.fetched.length, 2);
+  });
+
+  it('a 304 keeps the build: the host asks with the ETag it has and loads nothing again', async () => {
+    const { host, server, imported, newBuilds } = renewableHost({ version: '1.0.0' });
+    const first = await host.loadEntry('taxi-ride', 'UserTaskForm');
+    mock.timers.tick(MANIFEST_RECHECK_MS + 1);
+    assert.equal(await host.loadEntry('taxi-ride', 'UserTaskForm'), first);
+    assert.deepEqual(server.fetched[0], { cache: 'no-cache' });
+    assert.equal(server.fetched[1].cache, 'no-cache');
+    assert.match(server.fetched[1].headers['if-none-match'], /1\.0\.0/);
+    assert.deepEqual(imported, [at('form-1.0.0.js')]);
+    assert.deepEqual(newBuilds, []);
+    // The 304 counts as a read, so the next minute asks nothing.
+    mock.timers.tick(MANIFEST_RECHECK_MS);
+    await host.loadEntry('taxi-ride', 'UserTaskForm');
+    assert.equal(server.fetched.length, 2);
+  });
+
+  it('EXT-048 after a new buildVersion the next part comes from the new build, and every entry of the old build is dropped', async () => {
+    const { host, server, imported, newBuilds } = renewableHost({ version: '1.0.0' });
+    await host.loadEntry('taxi-ride', 'UserTaskForm');
+    await host.loadEntry('taxi-ride', 'UserTaskList');
+    server.deploy({ version: '1.1.0' });
+    // Within the time the host does not know about the new build yet.
+    assert.deepEqual(await host.loadEntry('taxi-ride', 'UserTaskForm'), { url: at('form-1.0.0.js') });
+    mock.timers.tick(MANIFEST_RECHECK_MS + 1);
+    assert.deepEqual(await host.loadEntry('taxi-ride', 'UserTaskForm'), { url: at('form-1.1.0.js') });
+    assert.deepEqual(await host.loadEntry('taxi-ride', 'UserTaskList'), { url: at('list-1.1.0.js') });
+    assert.equal((await host.readManifest('taxi-ride')).buildVersion, '1.1.0');
+    assert.deepEqual(imported, [at('form-1.0.0.js'), at('list-1.0.0.js'), at('form-1.1.0.js'), at('list-1.1.0.js')]);
+    assert.deepEqual(newBuilds, [['taxi-ride', '1.0.0', '1.1.0']]);
+  });
+
+  it('a new buildTimestamp with the same buildVersion is a new build as well', async () => {
+    const { host, server, newBuilds } = renewableHost({ version: '1.0.0-SNAPSHOT', timestamp: '2026-11-19T08:00:00Z', files: 'a' });
+    await host.loadEntry('taxi-ride', 'UserTaskForm');
+    server.deploy({ version: '1.0.0-SNAPSHOT', timestamp: '2026-11-19T09:00:00Z', files: 'b' });
+    mock.timers.tick(MANIFEST_RECHECK_MS + 1);
+    assert.deepEqual(await host.loadEntry('taxi-ride', 'UserTaskForm'), { url: at('form-b.js') });
+    assert.equal(newBuilds.length, 1);
+  });
+
+  it('a manifest without buildVersion and buildTimestamp is compared by its files', async () => {
+    const { host, server, newBuilds } = renewableHost({ files: 'a' });
+    await host.loadEntry('taxi-ride', 'UserTaskForm');
+    server.deploy({ files: 'a' });
+    mock.timers.tick(MANIFEST_RECHECK_MS + 1);
+    await host.loadEntry('taxi-ride', 'UserTaskForm');
+    assert.equal(newBuilds.length, 0);
+    server.deploy({ files: 'b' });
+    mock.timers.tick(MANIFEST_RECHECK_MS + 1);
+    assert.deepEqual(await host.loadEntry('taxi-ride', 'UserTaskForm'), { url: at('form-b.js') });
+    assert.equal(newBuilds.length, 1);
+  });
+
+  it('EXT-047 when reading the manifest again fails, the host goes on with the build it has and asks again next time', async () => {
+    const { host, server, warnings } = renewableHost({ version: '1.0.0' });
+    await host.loadEntry('taxi-ride', 'UserTaskForm');
+    server.deploy({ version: '1.1.0' });
+    server.failNext = true;
+    mock.timers.tick(MANIFEST_RECHECK_MS + 1);
+    assert.deepEqual(await host.loadEntry('taxi-ride', 'UserTaskForm'), { url: at('form-1.0.0.js') });
+    assert.match(warnings[0], /manifest of the module taxi-ride again failed/);
+    assert.deepEqual(await host.loadEntry('taxi-ride', 'UserTaskForm'), { url: at('form-1.1.0.js') });
+    assert.equal(server.fetched.length, 3);
+  });
+});
+
+/** Just enough of the browser's custom element registry for `load`. */
+function fakeCustomElements() {
+  const defined = new Map();
+  return {
+    defined,
+    define(name, constructor) {
+      if (defined.has(name)) throw new DOMException(`the name "${name}" has already been used`, 'NotSupportedError');
+      defined.set(name, constructor);
+    },
+    get: (name) => defined.get(name),
+    whenDefined: (name) => (defined.has(name) ? Promise.resolve(defined.get(name)) : new Promise(() => {})),
+  };
+}
+
+describe('load and the names of the web components', () => {
+  const formOf = (files) => `https://cockpit.example.com/wm/taxi-ride/confirm-${files}.js`;
+  let registry;
+
+  beforeEach(() => {
+    mock.timers.enable({ apis: ['Date'], now: 0 });
+    registry = fakeCustomElements();
+    globalThis.customElements = registry;
+  });
+  afterEach(() => {
+    mock.timers.reset();
+    delete globalThis.customElements;
+  });
+
+  /** A host whose visual entry `confirm-<files>.js` defines the web components `names[files]`. */
+  function loadingHost(build, names) {
+    const server = deployedModule(build);
+    const imported = [];
+    const errors = [];
+    const host = createModuleHost({
+      baseUrl: 'https://cockpit.example.com/',
+      modules: [{ id: 'taxi-ride', uri: '/wm/taxi-ride' }],
+      fetch: server.fetch,
+      importModule: async (url) => {
+        imported.push(url);
+        const files = url.match(/confirm-(.+)\.js$/)?.[1];
+        for (const name of names[files] ?? []) registry.define(name, class {});
+        return {};
+      },
+      whenDefinedTimeoutMs: 50,
+      logger: { warn: (message) => errors.push(message), error: (message) => errors.push(message) },
+    });
+    return { host, server, imported, errors };
+  }
+
+  it('EXT-046 draws at once when the current build defined every web component already', async () => {
+    const { host, server, imported } = loadingHost({ version: '1.0.0' }, { '1.0.0': ['taxi-ride-a-confirm-ride'] });
+    await host.load('taxi-ride', 'ConfirmRideForm', ['taxi-ride-a-confirm-ride']);
+    await host.load('taxi-ride', 'ConfirmRideForm', ['taxi-ride-a-confirm-ride']);
+    assert.deepEqual(imported, [formOf('1.0.0')]);
+    assert.equal(server.fetched.length, 1);
+  });
+
+  it('EXT-048 loads the visual entry of a new build whose names carry the build', async () => {
+    const { host, server, imported } = loadingHost({ version: '1.0.0' }, { '1.0.0': ['taxi-ride-a-confirm-ride'], '1.1.0': ['taxi-ride-b-confirm-ride'] });
+    await host.load('taxi-ride', 'ConfirmRideForm', ['taxi-ride-a-confirm-ride']);
+    server.deploy({ version: '1.1.0' });
+    mock.timers.tick(MANIFEST_RECHECK_MS + 1);
+    await host.load('taxi-ride', 'ConfirmRideForm', ['taxi-ride-b-confirm-ride']);
+    assert.deepEqual(imported, [formOf('1.0.0'), formOf('1.1.0')]);
+  });
+
+  it('EXT-049 does not load the new build when an earlier build defined the name already, and says why', async () => {
+    const { host, server, imported, errors } = loadingHost({ version: '1.0.0' }, { '1.0.0': ['taxi-ride-confirm-ride'], '1.1.0': ['taxi-ride-confirm-ride'] });
+    await host.load('taxi-ride', 'ConfirmRideForm', ['taxi-ride-confirm-ride']);
+    server.deploy({ version: '1.1.0' });
+    mock.timers.tick(MANIFEST_RECHECK_MS + 1);
+    const error = await host.load('taxi-ride', 'ConfirmRideForm', ['taxi-ride-confirm-ride']).catch((e) => e);
+    assert.ok(error instanceof BcHostError);
+    assert.equal(error.code, ALREADY_DEFINED);
+    assert.equal(error.step, 'load');
+    assert.equal(error.moduleId, 'taxi-ride');
+    assert.equal(error.element, 'taxi-ride-confirm-ride');
+    assert.deepEqual(imported, [formOf('1.0.0')]);
+    assert.match(errors[0], /taxi-ride was updated.*taxi-ride-confirm-ride.*Reload the page/);
+  });
+
+  it('EXT-049 a name the earlier build never defined loads as usual', async () => {
+    const { host, server, imported } = loadingHost({ version: '1.0.0' }, { '1.0.0': ['taxi-ride-confirm-ride'], '1.1.0': ['taxi-ride-assess-risk'] });
+    await host.load('taxi-ride', 'ConfirmRideForm', ['taxi-ride-confirm-ride']);
+    server.deploy({ version: '1.1.0' });
+    mock.timers.tick(MANIFEST_RECHECK_MS + 1);
+    await host.load('taxi-ride', 'ConfirmRideForm', ['taxi-ride-assess-risk']);
+    assert.deepEqual(imported, [formOf('1.0.0'), formOf('1.1.0')]);
+  });
+
+  it('a web component the entry defined but the host did not wait for is noted on its first use', async () => {
+    const { host, imported } = loadingHost({ version: '1.0.0' }, { '1.0.0': ['taxi-ride-body', 'taxi-ride-all'] });
+    await host.load('taxi-ride', 'ConfirmRideForm', ['taxi-ride-body']);
+    await host.load('taxi-ride', 'ConfirmRideForm', ['taxi-ride-all']);
+    await host.load('taxi-ride', 'ConfirmRideForm', ['taxi-ride-all']);
+    assert.deepEqual(imported, [formOf('1.0.0')]);
   });
 });
 

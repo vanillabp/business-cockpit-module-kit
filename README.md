@@ -425,6 +425,38 @@ The steps are also there on their own: `host.ask(moduleId, entry, args)`,
 A failed step throws a `BcHostError` which names the step, the module, the entry and, where it
 applies, the web component.
 
+### A new build of a module
+
+The host notices a new build of a module the way a cockpit does, so a module can test it:
+
+- Before it asks a part of a module, the host reads the manifest again when its last read is older
+  than `MANIFEST_RECHECK_MS`, 60 seconds. It asks with `cache: 'no-cache'` and the ETag it has, so
+  the module can answer `304 Not Modified`. A 304 keeps the build the host has.
+- It compares `buildVersion` and `buildTimestamp` with the manifest it has. A manifest without both
+  is compared by its files. When they differ, the host drops everything it loaded from the old
+  build, calls `onNewBuild`, and loads the next part from the new build. Web components already on
+  the page stay.
+- When reading the manifest again fails, the host goes on with the build it has and tries again at
+  the next ask.
+- `host.load` does nothing when the current build defined every web component already: no
+  `import()`, no waiting. When an earlier build of the module defined one of the names, a new
+  visual entry cannot define it again. The host then loads nothing and throws a `BcHostError` with
+  the code `ALREADY_DEFINED`. A cockpit shows a note that the module was updated, with a button that
+  reloads the page.
+
+A test sets `manifestRecheckMs` to a short time, so it sees a new build without waiting a minute:
+
+```js
+const host = createModuleHost({
+  modules: [{ id: 'taxi-ride', uri: '/wm/taxi-ride' }],
+  manifestRecheckMs: 300,
+  onNewBuild: (moduleId, manifest, previous) => console.log(moduleId, previous.buildVersion, '->', manifest.buildVersion),
+});
+```
+
+A new build loads without a reload of the page only when the names of its web components carry the
+build id, see [The names of the web components](#the-names-of-the-web-components).
+
 ## Testing a generated cockpit
 
 The skill checks a generated cockpit with the three example modules of this repository: a module
@@ -474,7 +506,8 @@ npm test
 `npm test` runs the unit tests with the test runner of Node.js, builds the three example modules and
 runs the browser tests. The browser tests load one example module, written in React, in Vue and in
 Angular, side by side through the host, in Chromium: with areas, without areas, and with and without
-the entry `Header`. Then they run the conformance test against the reference host. To use a Chromium of
+the entry `Header`. They also deploy a new build of a small module while the page is open and check
+that the next part comes from it, and that a 304 changes nothing. Then they run the conformance test against the reference host. To use a Chromium of
 your own, set `BC_CHROMIUM_PATH`.
 
 | Script                      | What it does |

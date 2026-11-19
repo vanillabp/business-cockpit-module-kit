@@ -32,6 +32,18 @@ export interface ModuleHostOptions {
   importModule?: (url: string) => Promise<any>;
   /** How long the host waits for a web component; by default 10 seconds. */
   whenDefinedTimeoutMs?: number;
+  /**
+   * How long the host uses a manifest before it reads it again, in milliseconds; by default
+   * `MANIFEST_RECHECK_MS`, 60 seconds. It reads it again only before it asks a part of the module.
+   * A test sets a short time to see a new build of a module without waiting a minute.
+   */
+  manifestRecheckMs?: number;
+  /**
+   * Called when the host read the manifest of a module again and found a new build. Everything
+   * the host loaded from the old build is dropped by then; parts already on the page stay. A
+   * cockpit asks its header and its menu again here.
+   */
+  onNewBuild?: (moduleId: string, manifest: BcManifest, previous: BcManifest) => void;
   /** The actions the host runs besides the page and dialog actions it brings itself. */
   actions?: Record<string, ActionHandler>;
   /** Properties every drawn web component gets, for example `language` and `currentUser`. */
@@ -69,7 +81,9 @@ export interface ModuleHost {
     get(moduleId: string): WorkflowModule | undefined;
     ensure(moduleId: string): Promise<WorkflowModule | undefined>;
   };
+  /** The manifest of a module, read again first when its last read is older than `manifestRecheckMs`. */
   readManifest(moduleId: string): Promise<BcManifest | undefined>;
+  /** The exports of an entry of the module's current build; loaded once per build. */
   loadEntry(moduleId: string, entry: string): Promise<any>;
   /** The areas this host knows, besides 'all'. */
   readonly areas: readonly string[];
@@ -79,6 +93,10 @@ export interface ModuleHost {
   pickAreas(element: BcPageParts['element']): Record<string, string>;
   /** undefined for an entry this host does not know, or which the module does not offer. */
   ask(moduleId: string, entry: string, args?: unknown[]): Promise<any>;
+  /**
+   * Does nothing when the current build of the module defined every web component already.
+   * Throws a `BcHostError` with the code `ALREADY_DEFINED` when an earlier build defined one.
+   */
   load(moduleId: string, entry: string, elements: string[]): Promise<void>;
   draw(part: {
     moduleId: string;
@@ -93,11 +111,19 @@ export interface ModuleHost {
 
 export declare const DEFAULT_WHEN_DEFINED_TIMEOUT_MS: 10000;
 
+/** How long the host uses a manifest before it reads it again: 60 seconds. */
+export declare const MANIFEST_RECHECK_MS: 60000;
+
+/** The code of a `BcHostError` thrown because an earlier build of the module defined the web component already. */
+export declare const ALREADY_DEFINED: 'ALREADY_DEFINED';
+
 export declare class BcHostError extends Error {
   readonly step: 'ask' | 'load' | 'draw';
   readonly moduleId: string;
   readonly entry?: string;
   readonly element?: string;
+  /** `ALREADY_DEFINED` when only a reload of the page can show the new build of the module. */
+  readonly code?: typeof ALREADY_DEFINED;
 }
 
 export declare class BcRefusedError extends Error {

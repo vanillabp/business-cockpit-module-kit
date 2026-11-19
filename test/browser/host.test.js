@@ -24,6 +24,38 @@ const MODULES = [
 
 const userTask = (id) => ({ id, title: `Confirm ride ${id}`, bpmnProcessId: 'TaxiRide', taskDefinition: 'confirmRide' });
 
+/** The files of three builds of the module renewed-module, served below /wm/renewed-module/. */
+const renewedBuild = (build, version, elementName) => ({
+  '/wm/renewed-module/bc-manifest.json': JSON.stringify({
+    manifestVersion: 1,
+    buildVersion: version,
+    entries: { UserTaskForm: `${build}/form.js`, ConfirmRideForm: `${build}/confirm-ride.js` },
+  }),
+  [`/wm/renewed-module/${build}/form.js`]: `export const userTaskForm = () => ({ entry: 'ConfirmRideForm', element: '${elementName}' });`,
+  [`/wm/renewed-module/${build}/confirm-ride.js`]: `customElements.define('${elementName}', class extends HTMLElement {
+    connectedCallback() { this.shadowRoot ?? (this.attachShadow({ mode: 'open' }).innerHTML = '<p data-test="build">${version}</p>'); }
+  });`,
+});
+// Builds a and b carry the build in the name of their web component. Build c names the web
+// component of build a again, like a module whose names carry no build.
+const RENEWED_BUILDS = {
+  a: renewedBuild('a', '1.0.0', 'renewed-module-a-confirm-ride'),
+  b: renewedBuild('b', '1.1.0', 'renewed-module-b-confirm-ride'),
+  c: renewedBuild('c', '1.2.0', 'renewed-module-a-confirm-ride'),
+};
+
+const virtual = {
+  // A module whose visual entry never defines the web component its data entry names.
+  '/wm/slow-module/bc-manifest.json': JSON.stringify({ manifestVersion: 1, entries: { UserTaskForm: 'form.js', SlowForm: 'slow.js' } }),
+  '/wm/slow-module/form.js': 'export const userTaskForm = () => ({ entry: "SlowForm", element: "slow-module-form" });',
+  '/wm/slow-module/slow.js': '// defines nothing',
+};
+
+/** Puts a build of renewed-module on the server, while the server keeps running. */
+function deployRenewed(build) {
+  Object.assign(virtual, RENEWED_BUILDS[build]);
+}
+
 let server;
 let browser;
 
@@ -36,12 +68,7 @@ before(async () => {
       '/wm/vue-module/': join(examples, 'vue-module', 'dist'),
       '/wm/angular-module/': join(examples, 'angular-module', 'dist'),
     },
-    virtual: {
-      // A module whose visual entry never defines the web component its data entry names.
-      '/wm/slow-module/bc-manifest.json': JSON.stringify({ manifestVersion: 1, entries: { UserTaskForm: 'form.js', SlowForm: 'slow.js' } }),
-      '/wm/slow-module/form.js': 'export const userTaskForm = () => ({ entry: "SlowForm", element: "slow-module-form" });',
-      '/wm/slow-module/slow.js': '// defines nothing',
-    },
+    virtual,
   });
   browser = await chromium.launch(process.env.BC_CHROMIUM_PATH ? { executablePath: process.env.BC_CHROMIUM_PATH } : {});
 });
@@ -270,6 +297,98 @@ describe('the reference host in Chromium', () => {
     assert.deepEqual(error, { name: 'BcHostError', step: 'load', moduleId: 'slow-module', entry: 'SlowForm', element: 'slow-module-form' });
     const errors = await page.evaluate(() => window.bcTest.errors);
     assert.match(errors[0], /slow-module did not define the web component slow-module-form within 300 ms/);
+    await page.close();
+  });
+});
+
+describe('a new build of a module in Chromium', () => {
+  const RECHECK_MS = 300;
+  const HTTP_OK = 200;
+  const HTTP_NOT_MODIFIED = 304;
+
+  /** Shows the user task form of renewed-module in a new container and returns the build it shows. */
+  async function showRenewed(page, containerId) {
+    return page.evaluate(async (id) => {
+      document.body.append(Object.assign(document.createElement('section'), { id }));
+      await window.bcTest.show('renewed-module', { id: '1' }, id);
+      const element = document.querySelector(`#${id} > *`);
+      return { name: element.localName, build: element.shadowRoot.querySelector('[data-test="build"]').textContent };
+    }, containerId);
+  }
+
+  /** What the server answered for renewed-module since `since`, without the host page. */
+  const answeredSince = (since) => server.responses.slice(since).filter(([path]) => path.startsWith('/wm/renewed-module/'));
+
+  /** Lets the time pass after which the host reads the manifest again. */
+  const waitForRecheck = (page) => page.waitForTimeout(RECHECK_MS + 100);
+
+  it('EXT-046 EXT-047 a 304 changes nothing, and a part shown again loads nothing', async () => {
+    deployRenewed('a');
+    const { page, consoleErrors } = await openPage(`?recheck=${RECHECK_MS}`);
+    let since = server.responses.length;
+    assert.deepEqual(await showRenewed(page, 'first'), { name: 'renewed-module-a-confirm-ride', build: '1.0.0' });
+    assert.deepEqual(answeredSince(since), [
+      ['/wm/renewed-module/bc-manifest.json', HTTP_OK],
+      ['/wm/renewed-module/a/form.js', HTTP_OK],
+      ['/wm/renewed-module/a/confirm-ride.js', HTTP_OK],
+    ]);
+
+    // Within the time the host neither reads the manifest nor imports, and draws at once.
+    since = server.responses.length;
+    assert.deepEqual(await showRenewed(page, 'second'), { name: 'renewed-module-a-confirm-ride', build: '1.0.0' });
+    assert.deepEqual(answeredSince(since), []);
+
+    // After the time the host asks again, the server answers 304, and the build stays.
+    await waitForRecheck(page);
+    since = server.responses.length;
+    assert.deepEqual(await showRenewed(page, 'third'), { name: 'renewed-module-a-confirm-ride', build: '1.0.0' });
+    assert.deepEqual(answeredSince(since), [['/wm/renewed-module/bc-manifest.json', HTTP_NOT_MODIFIED]]);
+    assert.deepEqual(await page.evaluate(() => window.bcTest.newBuilds), []);
+    assert.deepEqual(consoleErrors, []);
+    await page.close();
+  });
+
+  it('EXT-048 after a new buildVersion the next part comes from the new build, and the parts shown stay', async () => {
+    deployRenewed('a');
+    const { page, consoleErrors } = await openPage(`?recheck=${RECHECK_MS}`);
+    assert.deepEqual(await showRenewed(page, 'before'), { name: 'renewed-module-a-confirm-ride', build: '1.0.0' });
+
+    deployRenewed('b');
+    await waitForRecheck(page);
+    const since = server.responses.length;
+    assert.deepEqual(await showRenewed(page, 'after'), { name: 'renewed-module-b-confirm-ride', build: '1.1.0' });
+    assert.deepEqual(answeredSince(since), [
+      ['/wm/renewed-module/bc-manifest.json', HTTP_OK],
+      ['/wm/renewed-module/b/form.js', HTTP_OK],
+      ['/wm/renewed-module/b/confirm-ride.js', HTTP_OK],
+    ]);
+    assert.equal(await page.locator('#before > renewed-module-a-confirm-ride').count(), 1);
+    assert.deepEqual(await page.evaluate(() => window.bcTest.newBuilds), [{ moduleId: 'renewed-module', from: '1.0.0', to: '1.1.0' }]);
+    assert.deepEqual(consoleErrors, []);
+    await page.close();
+  });
+
+  it('EXT-049 a new build which names a web component of the earlier build is not loaded, and the host says why', async () => {
+    deployRenewed('a');
+    const { page, consoleErrors } = await openPage(`?recheck=${RECHECK_MS}`);
+    await showRenewed(page, 'before');
+
+    deployRenewed('c');
+    await waitForRecheck(page);
+    const since = server.responses.length;
+    const error = await page.evaluate(async () => {
+      document.body.append(Object.assign(document.createElement('section'), { id: 'after' }));
+      return window.bcTest.show('renewed-module', { id: '1' }, 'after').then(
+        () => undefined,
+        (e) => ({ name: e.name, code: e.code, step: e.step, moduleId: e.moduleId, element: e.element }),
+      );
+    });
+    assert.deepEqual(error, { name: 'BcHostError', code: 'ALREADY_DEFINED', step: 'load', moduleId: 'renewed-module', element: 'renewed-module-a-confirm-ride' });
+    assert.deepEqual(answeredSince(since).map(([path]) => path), ['/wm/renewed-module/bc-manifest.json', '/wm/renewed-module/c/form.js']);
+    const errors = await page.evaluate(() => window.bcTest.errors);
+    assert.match(errors.at(-1), /renewed-module was updated.*renewed-module-a-confirm-ride.*Reload the page/);
+    assert.equal(await page.locator('#before > renewed-module-a-confirm-ride').count(), 1);
+    assert.deepEqual(consoleErrors, []);
     await page.close();
   });
 });
