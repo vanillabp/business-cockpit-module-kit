@@ -5,6 +5,9 @@
   "description": "An example workflow module whose forms use React. Only for the tests of the kit.",
   "license": "Apache-2.0",
   "type": "module",
+  "config": {
+    "workflowModuleId": "react-module"
+  },
   "scripts": {
     "build": "node build.mjs"
   },

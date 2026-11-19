@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { defineBcElement } from '@vanillabp/bc-module-kit';
+import { CONFIRM_RIDE } from './element-names.js';
 
 const STYLE = 'p, button { color: rgb(200, 0, 0); font-family: monospace; }';
 const roots = new WeakMap();
@@ -49,7 +50,7 @@ function Buttons({ userTask, openDialog, showNotification, valid }) {
       setState(`failed: ${error.code}`);
     }
   };
-  const dialog = async () => setState(`dialog: ${await openDialog({ element: 'react-module-confirm-ride-dialog', entry: 'ConfirmRideForm' }, { from: 'actions' })}`);
+  const dialog = async () => setState(`dialog: ${await openDialog({ element: CONFIRM_RIDE.dialog, entry: 'ConfirmRideForm' }, { from: 'actions' })}`);
   return (
     <>
       <button data-test="claim" onClick={claim}>Claim</button>
@@ -106,7 +107,7 @@ function Dialog({ data, closeDialog }) {
   );
 }
 
-reactElement('react-module-confirm-ride', All);
-reactElement('react-module-confirm-ride-body', Body);
-reactElement('react-module-confirm-ride-actions', Actions);
-reactElement('react-module-confirm-ride-dialog', Dialog);
+reactElement(CONFIRM_RIDE.all, All);
+reactElement(CONFIRM_RIDE.body, Body);
+reactElement(CONFIRM_RIDE.actions, Actions);
+reactElement(CONFIRM_RIDE.dialog, Dialog);

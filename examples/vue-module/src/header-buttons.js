@@ -2,10 +2,11 @@
 
 import { createApp, h, shallowReactive } from 'vue';
 import { defineBcElement } from '@vanillabp/bc-module-kit';
+import { NEW_RIDE } from './element-names.js';
 
 const apps = new WeakMap();
 
-defineBcElement('vue-module-new-ride', {
+defineBcElement(NEW_RIDE, {
   mount: (root, props) => {
     const state = shallowReactive({ props });
     const container = document.createElement('div');

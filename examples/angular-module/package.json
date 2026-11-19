@@ -5,8 +5,11 @@
   "description": "An example workflow module whose forms use Angular. Only for the tests of the kit.",
   "license": "Apache-2.0",
   "type": "module",
+  "config": {
+    "workflowModuleId": "angular-module"
+  },
   "scripts": {
-    "build": "ng build && node scripts/write-manifest.mjs"
+    "build": "node ../write-bc-build.mjs . && ng build && node scripts/write-manifest.mjs"
   },
   "devDependencies": {
     "@angular/build": "22.2.6",

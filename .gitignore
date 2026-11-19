@@ -3,3 +3,4 @@ dist/
 test/browser/.build/
 *.log
 .angular/
+examples/*/src/bc-build.js

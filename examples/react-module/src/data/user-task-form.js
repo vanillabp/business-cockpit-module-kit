@@ -5,15 +5,13 @@
 // cockpit may have on top. A cockpit with these areas shows them and ignores 'all'; a cockpit
 // without them shows 'all'.
 
+import { CONFIRM_RIDE } from '../element-names.js';
+
 export const userTaskForm = (userTask) => {
   if (userTask.bpmnProcessId !== 'TaxiRide') return undefined;
   if (userTask.taskDefinition !== 'confirmRide') return undefined;
   return {
     entry: 'ConfirmRideForm',
-    element: {
-      all: 'react-module-confirm-ride',
-      body: 'react-module-confirm-ride-body',
-      actions: 'react-module-confirm-ride-actions',
-    },
+    element: { all: CONFIRM_RIDE.all, body: CONFIRM_RIDE.body, actions: CONFIRM_RIDE.actions },
   };
 };

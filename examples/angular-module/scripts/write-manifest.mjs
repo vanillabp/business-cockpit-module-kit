@@ -7,6 +7,7 @@
 import { renameSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { writeManifestAndCheck } from '../../build-module.mjs';
+import { readBuildTime } from '../../write-bc-build.mjs';
 
 const moduleDir = resolve(import.meta.dirname, '..');
 const outdir = join(moduleDir, 'dist');
@@ -24,4 +25,5 @@ const entries = {
 const metafilePath = join(outdir, 'meta.json');
 renameSync(join(outdir, 'browser-stats.json'), metafilePath);
 // The CLI names each output relative to dist.
-writeManifestAndCheck(moduleDir, entries, metafilePath, ['Header'], outdir);
+// The manifest gets the time of the build id, which `npm run build` wrote before `ng build`.
+writeManifestAndCheck(moduleDir, entries, metafilePath, ['Header'], outdir, await readBuildTime(moduleDir));

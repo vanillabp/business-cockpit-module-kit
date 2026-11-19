@@ -295,7 +295,10 @@ writeFileSync('src/bc-build.js', [
   letters and digits. Pass the same time to `createManifest` as `buildTimestamp`, so the manifest and
   the names speak of one build.
 
-The example modules in this repository still write their names by hand, without a build id.
+The example modules in this repository do it this way:
+[`examples/write-bc-build.mjs`](./examples/write-bc-build.mjs) writes `src/bc-build.js` from
+`config.workflowModuleId` in the module's `package.json`, and each module builds its names in
+`src/element-names.js`.
 
 ### The manifest
 
@@ -425,6 +428,20 @@ The steps are also there on their own: `host.ask(moduleId, entry, args)`,
 A failed step throws a `BcHostError` which names the step, the module, the entry and, where it
 applies, the web component.
 
+Before `host.load` loads anything, it checks every name, the same way a cockpit does. This holds for
+the names a data entry returns and for the name of a dialog that `cockpit.openDialog` asks for. A
+name is refused when
+
+- it is no valid name of a custom element, or a reserved one like `font-face`,
+- it does not start with the prefix of its module and a hyphen, see
+  [The names of the web components](#the-names-of-the-web-components),
+- or it starts with the longer prefix of another module of the registry. A module `taxi` may not
+  use the name `taxi-ride-confirm` when there is a module `taxi-ride`.
+
+The host then loads nothing for the name. It writes a message that names the module, the name and
+the prefix to the console, and throws a `BcHostError` with the code `WRONG_ELEMENT_NAME`. The check
+does not look for the build id, so a name without it passes.
+
 ### A new build of a module
 
 The host notices a new build of a module the way a cockpit does, so a module can test it:
@@ -507,7 +524,8 @@ npm test
 runs the browser tests. The browser tests load one example module, written in React, in Vue and in
 Angular, side by side through the host, in Chromium: with areas, without areas, and with and without
 the entry `Header`. They also deploy a new build of a small module while the page is open and check
-that the next part comes from it, and that a 304 changes nothing. Then they run the conformance test against the reference host. To use a Chromium of
+that the next part comes from it, and that a 304 changes nothing. A small module whose data entry
+names a web component with the prefix of another module checks that the host refuses it. Then they run the conformance test against the reference host. To use a Chromium of
 your own, set `BC_CHROMIUM_PATH`.
 
 | Script                      | What it does |
