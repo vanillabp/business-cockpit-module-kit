@@ -7,6 +7,8 @@ const notifications = [];
 const errors = [];
 const query = new URLSearchParams(location.search);
 const whenDefined = query.get('whenDefined');
+const recheck = query.get('recheck');
+const newBuilds = [];
 
 const host = createModuleHost({
   modules: [
@@ -14,8 +16,12 @@ const host = createModuleHost({
     { id: 'vue-module', uri: '/wm/vue-module' },
     { id: 'angular-module', uri: '/wm/angular-module' },
     { id: 'slow-module', uri: '/wm/slow-module' },
+    { id: 'renewed-module', uri: '/wm/renewed-module' },
   ],
   whenDefinedTimeoutMs: whenDefined ? Number(whenDefined) : undefined,
+  // ?recheck=300 reads a manifest again after 300 ms instead of a minute.
+  manifestRecheckMs: recheck ? Number(recheck) : undefined,
+  onNewBuild: (moduleId, manifest, previous) => newBuilds.push({ moduleId, from: previous.buildVersion, to: manifest.buildVersion }),
   // ?areas=body,actions gives the host areas; without it, it is a host with the minimum only.
   areas: query.get('areas')?.split(',').filter(Boolean),
   // ?header gives the host the entry Header.
@@ -34,6 +40,7 @@ window.bcTest = {
   calls,
   notifications,
   errors,
+  newBuilds,
   async show(moduleId, userTask, containerId) {
     const part = await host.showUserTask(moduleId, userTask, document.getElementById(containerId));
     return part ? [...part.elements.keys()] : undefined;
