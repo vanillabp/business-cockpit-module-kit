@@ -7,6 +7,7 @@ import { Component, type OnDestroy, type OnInit, input, output, signal } from '@
 import type { BcElementProps, BcSubscription, BcUserTask } from '@vanillabp/bc-module-kit';
 import { angularElement } from './angular-element';
 import { CONFIRM_RIDE } from './element-names.js';
+import { inLanguage } from './texts.js';
 
 const STYLES = ['p, button { color: rgb(200, 0, 0); font-family: monospace; }'];
 
@@ -16,14 +17,19 @@ const STYLES = ['p, button { color: rgb(200, 0, 0); font-family: monospace; }'];
   styles: STYLES,
   template: `
     <p data-test="framework">Angular</p>
-    <p data-test="title">{{ userTask().title }}</p>
+    <p data-test="title">{{ title() }}</p>
     <input data-test="comment" [value]="comment()" (input)="onInput($event)" />
   `,
 })
 class Fields {
   readonly userTask = input.required<BcUserTask>();
+  readonly language = input<string>();
   readonly valid = output<boolean>();
   readonly comment = signal('');
+
+  title(): string {
+    return inLanguage(this.userTask().title, this.language());
+  }
 
   onInput(event: Event): void {
     const value = (event.target as HTMLInputElement).value;
@@ -68,7 +74,7 @@ class Buttons {
 @Component({
   imports: [Fields, Buttons],
   template: `
-    <confirm-ride-fields [userTask]="props().userTask!" (valid)="valid.set($event)" />
+    <confirm-ride-fields [userTask]="props().userTask!" [language]="props().language" (valid)="valid.set($event)" />
     <confirm-ride-buttons [props]="props()" [valid]="valid()" />
   `,
 })
@@ -80,7 +86,7 @@ class All {
 /** The area 'body': the fields. It tells the area 'actions' whether the comment is valid. */
 @Component({
   imports: [Fields],
-  template: `<confirm-ride-fields [userTask]="props().userTask!" (valid)="props().userTask!.sendTo('actions', { valid: $event })" />`,
+  template: `<confirm-ride-fields [userTask]="props().userTask!" [language]="props().language" (valid)="props().userTask!.sendTo('actions', { valid: $event })" />`,
 })
 class Body {
   readonly props = input.required<BcElementProps>();

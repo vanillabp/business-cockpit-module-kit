@@ -6,6 +6,7 @@
 import { createApp, h, onMounted, onUnmounted, ref, shallowReactive } from 'vue';
 import { defineBcElement } from '@vanillabp/bc-module-kit';
 import { CONFIRM_RIDE } from './element-names.js';
+import { inLanguage } from './texts.js';
 
 const STYLE = 'p, button { color: rgb(200, 0, 0); font-family: monospace; }';
 const apps = new WeakMap();
@@ -36,7 +37,7 @@ function fields(state, onValid) {
   };
   return () => [
     h('p', { 'data-test': 'framework' }, 'Vue'),
-    h('p', { 'data-test': 'title' }, state.props.userTask.title),
+    h('p', { 'data-test': 'title' }, inLanguage(state.props.userTask.title, state.props.language)),
     h('input', { 'data-test': 'comment', value: comment.value, onInput }),
   ];
 }

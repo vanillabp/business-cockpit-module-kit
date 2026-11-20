@@ -33,7 +33,7 @@ const NAMES = Object.fromEntries(await Promise.all(MODULES.map(async ({ moduleId
   return [moduleId, { ...CONFIRM_RIDE, newRide: NEW_RIDE, buildId: BUILD_ID }];
 })));
 
-const userTask = (id) => ({ id, title: `Confirm ride ${id}`, bpmnProcessId: 'TaxiRide', taskDefinition: 'confirmRide' });
+const userTask = (id) => ({ id, title: { en: `Confirm ride ${id}`, de: `Fahrt bestätigen ${id}` }, bpmnProcessId: 'TaxiRide', taskDefinition: 'confirmRide' });
 
 /** The files of three builds of the module renewed-module, served below /wm/renewed-module/. */
 const renewedBuild = (build, version, elementName) => ({

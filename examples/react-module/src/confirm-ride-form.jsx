@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { defineBcElement } from '@vanillabp/bc-module-kit';
 import { CONFIRM_RIDE } from './element-names.js';
+import { inLanguage } from './texts.js';
 
 const STYLE = 'p, button { color: rgb(200, 0, 0); font-family: monospace; }';
 const roots = new WeakMap();
@@ -23,7 +24,7 @@ function reactElement(name, Component) {
 }
 
 /** The fields of the form. It reports whether the comment is valid. */
-function Fields({ userTask, onValid }) {
+function Fields({ userTask, language, onValid }) {
   const [comment, setComment] = useState('');
   const onInput = (event) => {
     setComment(event.target.value);
@@ -32,7 +33,7 @@ function Fields({ userTask, onValid }) {
   return (
     <>
       <p data-test="framework">React</p>
-      <p data-test="title">{userTask.title}</p>
+      <p data-test="title">{inLanguage(userTask.title, language)}</p>
       <input data-test="comment" value={comment} onInput={onInput} onChange={() => {}} />
     </>
   );
