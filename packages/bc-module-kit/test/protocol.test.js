@@ -148,8 +148,8 @@ describe('messages between areas', () => {
 describe('BcUserTask and BcWorkflow', () => {
   it('turn every function into its action with the id of the user task', async () => {
     const { element, requests } = elementWithCockpit(() => ({ ok: true }));
-    const userTask = toBcUserTask(element, { id: '4711', title: 'Confirm ride' });
-    assert.equal(userTask.title, 'Confirm ride');
+    const userTask = toBcUserTask(element, { id: '4711', title: { en: 'Confirm ride' } });
+    assert.deepEqual(userTask.title, { en: 'Confirm ride' });
     await userTask.open();
     await userTask.navigateToWorkflow();
     await userTask.claim();

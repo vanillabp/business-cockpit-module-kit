@@ -22,4 +22,4 @@ const host = createModuleHost({
   },
 });
 
-host.showUserTask(query.get('module'), { id: '4711', title: 'Confirm ride 4711', bpmnProcessId: 'TaxiRide', taskDefinition: 'confirmRide' }, page);
+host.showUserTask(query.get('module'), { id: '4711', title: { en: 'Confirm ride 4711', de: 'Fahrt bestätigen 4711' }, bpmnProcessId: 'TaxiRide', taskDefinition: 'confirmRide' }, page);
